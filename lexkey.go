@@ -99,14 +99,6 @@ func (e *LexKey) UnmarshalJSON(data []byte) error {
 	return e.FromHexString(hexStr)
 }
 
-// EncodeFirst returns the first lexicographically sortable key in a range.
-func (e LexKey) EncodeFirst() []byte {
-	newKey := make([]byte, len(e)+1)
-	copy(newKey, e)
-	newKey[len(e)] = separatorByte
-	return newKey
-}
-
 // EncodeLast returns the last lexicographically sortable key in a range.
 func (e LexKey) EncodeLast() []byte {
 	newKey := make([]byte, len(e)+1)
@@ -130,6 +122,8 @@ func encodeToBytes(v any) ([]byte, error) {
 		return encodeInt64(v), nil
 	case int32:
 		return encodeInt32(v), nil
+	case int16:
+		return encodeInt16(v), nil
 	case uint64:
 		return encodeUint64(v), nil
 	case uint32:
@@ -169,6 +163,12 @@ func encodeInt64(v int64) []byte {
 func encodeInt32(v int32) []byte {
 	buf := make([]byte, 4)
 	binary.BigEndian.PutUint32(buf, uint32(v)^0x80000000) // Flip sign bit
+	return buf
+}
+
+func encodeInt16(v int16) []byte {
+	buf := make([]byte, 2)
+	binary.BigEndian.PutUint16(buf, uint16(v)^0x8000) // Flip sign bit
 	return buf
 }
 
