@@ -66,14 +66,6 @@ func TestNewLexKey(t *testing.T) {
 	}
 }
 
-// Test Encode function
-func TestEncode(t *testing.T) {
-	key, err := Encode("hello", 42)
-	require.NoError(t, err)
-	expected := "68656c6c6f00800000000000002a" // Corrected to match "hello" and 42
-	assert.Equal(t, expected, hex.EncodeToString(key))
-}
-
 // Test IsEmpty method
 func TestLexKey_IsEmpty(t *testing.T) {
 	assert.True(t, LexKey{}.IsEmpty())
@@ -82,7 +74,7 @@ func TestLexKey_IsEmpty(t *testing.T) {
 
 // Test JSON serialization and deserialization
 func TestLexKey_JSON(t *testing.T) {
-	key, _ := Encode("test")
+	key := Encode("test")
 	data, err := json.Marshal(key)
 	require.NoError(t, err)
 
@@ -95,18 +87,20 @@ func TestLexKey_JSON(t *testing.T) {
 
 // Test lexicographic ordering
 func TestLexKey_Ordering(t *testing.T) {
-	key1, _ := Encode("a")
-	key2, _ := Encode("b")
+	key1 := Encode("a")
+	key2 := Encode("b")
 	assert.True(t, string(key1) < string(key2))
 }
 
 // Test EncodeFirst and EncodeLast
 func TestLexKey_EncodeLast(t *testing.T) {
-	key, _ := Encode("middle")
-	last := key.EncodeLast()
+	key := Encode("prefix", "a")
+	first := EncodeFirst("prefix")
+	last := EncodeLast("prefix")
 
-	assert.True(t, string(key) < string(last))                         // Existing check
-	assert.True(t, hex.EncodeToString(last) > hex.EncodeToString(key)) // Additional verification
+	assert.True(t, hex.EncodeToString(first) <= hex.EncodeToString(key))
+	assert.True(t, hex.EncodeToString(last) > hex.EncodeToString(key))
+	assert.True(t, hex.EncodeToString(first) < hex.EncodeToString(last))
 }
 
 // Test PrimaryKey encoding
@@ -131,20 +125,20 @@ func TestRangeKey(t *testing.T) {
 
 // Test encoding numbers// Test encoding numbers
 func TestNumberEncoding(t *testing.T) {
-	intKey, _ := Encode(42)
+	intKey := Encode(42)
 	assert.Equal(t, "800000000000002a", hex.EncodeToString(intKey))
 
-	floatKey, _ := Encode(3.14)
+	floatKey := Encode(3.14)
 	assert.Equal(t, "c0091eb851eb851f", hex.EncodeToString(floatKey)) // Corrected
 
-	negativeIntKey, _ := Encode(-42)
+	negativeIntKey := Encode(-42)
 	assert.Equal(t, "7fffffffffffffd6", hex.EncodeToString(negativeIntKey))
 }
 
 // Test boolean encoding
 func TestBooleanEncoding(t *testing.T) {
-	trueKey, _ := Encode(true)
-	falseKey, _ := Encode(false)
+	trueKey := Encode(true)
+	falseKey := Encode(false)
 	assert.Equal(t, "01", hex.EncodeToString(trueKey))
 	assert.Equal(t, "00", hex.EncodeToString(falseKey))
 }
@@ -157,14 +151,14 @@ func TestErrorCases(t *testing.T) {
 	err := key.FromHexString("invalidhex")
 	assert.Error(t, err)
 
-	// Unsupported type
-	_, err = Encode(make(chan int))
-	assert.Error(t, err)
+	assert.Panics(t, func() {
+		Encode(make(chan int))
+	})
 }
 
 // Test nil values
 func TestNilValues(t *testing.T) {
-	nilKey, _ := Encode(nil)
+	nilKey := Encode(nil)
 	assert.Equal(t, "00", hex.EncodeToString(nilKey))
 }
 
@@ -197,8 +191,7 @@ func TestLexKey_Int64Sorting(t *testing.T) {
 	// Encode each value
 	var encodedKeys []LexKey
 	for _, v := range values {
-		encoded, err := Encode(v)
-		require.NoError(t, err)
+		encoded := Encode(v)
 		encodedKeys = append(encodedKeys, encoded)
 	}
 
@@ -216,8 +209,7 @@ func TestLexKey_Int32VsInt64Sorting(t *testing.T) {
 	// Encode each value
 	var encodedKeys []LexKey
 	for _, v := range values {
-		encoded, err := Encode(v)
-		require.NoError(t, err)
+		encoded := Encode(v)
 		encodedKeys = append(encodedKeys, encoded)
 	}
 

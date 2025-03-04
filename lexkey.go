@@ -14,8 +14,8 @@ import (
 
 // Special bytes used in lexicographic encoding
 const (
-	separatorByte = 0x00
-	EndMarker     = 0xFF
+	Seperator = 0x00
+	EndMarker = 0xFF
 )
 
 // LexKey represents an encoded key as a byte slice, optimized for lexicographic sorting.
@@ -37,15 +37,39 @@ func NewLexKey(parts ...any) (LexKey, error) {
 		}
 		result = append(result, encoded...)
 		if i < len(parts)-1 {
-			result = append(result, separatorByte)
+			result = append(result, Seperator)
 		}
 	}
 	return result, nil
 }
 
 // Encode constructs a LexKey, returning an error if encoding fails.
-func Encode(parts ...any) (LexKey, error) {
-	return NewLexKey(parts...)
+func Encode(parts ...any) LexKey {
+	key, err := NewLexKey(parts...)
+	if err != nil {
+		panic(fmt.Sprintf("failed to encode key: %v", err))
+	}
+	return key
+}
+
+// EncodeFirst returns the last lexicographically sortable key in a range.
+func EncodeFirst(parts ...any) LexKey {
+	prefix := Encode(parts...)
+	newKey := make(LexKey, len(prefix)+1)
+
+	copy(newKey, prefix)
+	newKey[len(prefix)] = Seperator
+	return newKey
+}
+
+// EncodeLast returns the last lexicographically sortable key in a range.
+func EncodeLast(parts ...any) LexKey {
+	prefix := Encode(parts...)
+	newKey := make(LexKey, len(prefix)+1)
+
+	copy(newKey, prefix)
+	newKey[len(prefix)] = EndMarker
+	return newKey
 }
 
 // IsEmpty checks if the LexKey is empty (length 0). A nil LexKey is considered empty.
@@ -97,14 +121,6 @@ func (e *LexKey) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("failed to unmarshal LexKey hex string: %w", err)
 	}
 	return e.FromHexString(hexStr)
-}
-
-// EncodeLast returns the last lexicographically sortable key in a range.
-func (e LexKey) EncodeLast() []byte {
-	newKey := make([]byte, len(e)+1)
-	copy(newKey, e)
-	newKey[len(e)] = EndMarker
-	return newKey
 }
 
 // encodeToBytes converts a value to a lexicographically sortable byte representation.
@@ -246,7 +262,7 @@ func NewPrimaryKey(partitionKey, rowKey LexKey) (PrimaryKey, error) {
 func (pk PrimaryKey) Encode() LexKey {
 	result := make(LexKey, len(pk.PartitionKey)+len(pk.RowKey)+1)
 	n := copy(result, pk.PartitionKey)
-	result[n] = separatorByte
+	result[n] = Seperator
 	copy(result[n+1:], pk.RowKey)
 	return result
 }
@@ -286,9 +302,9 @@ func encodeBoundary(partitionKey, rowKey LexKey, isUpper, withPartitionKey bool)
 		n += copy(result, partitionKey)
 	}
 	if len(rowKey) == 0 {
-		result[n] = ternary(isUpper, EndMarker, separatorByte)
+		result[n] = ternary(isUpper, EndMarker, Seperator)
 	} else {
-		result[n] = separatorByte
+		result[n] = Seperator
 		n++
 		copy(result[n:], rowKey)
 		if isUpper {
