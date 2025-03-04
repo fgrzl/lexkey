@@ -80,22 +80,22 @@ fmt.Println(string(jsonData)) // ✅ Encoded as a hex string
 
 
 
-## 🔍 **Supported Data Types**
-| Type         | Supported? | Encoding Details |
-|-|--||
-| `string`    | ✅ Yes | Stored as raw UTF-8 bytes |
-| `int32`     | ✅ Yes | Converted to `int64` for uniform sorting |
-| `int64`     | ✅ Yes | Sign-bit flipped for correct ordering |
-| `uint32`    | ✅ Yes | Big-endian encoded |
-| `uint64`    | ✅ Yes | Big-endian encoded |
-| `float32`   | ✅ Yes | IEEE 754 encoded with sign-bit transformation |
-| `float64`   | ✅ Yes | IEEE 754 encoded with sign-bit transformation |
-| `bool`      | ✅ Yes | `true → 0x01`, `false → 0x00` |
-| `uuid.UUID` | ✅ Yes | 16-byte raw representation |
-| `[]byte`    | ✅ Yes | Stored as-is |
-| `time.Time` | ✅ Yes | Encoded as `int64` nanoseconds since Unix epoch |
-| `time.Duration` | ✅ Yes | Encoded as `int64` nanoseconds |
+## 🔍 Supported Data Types
 
+| Type            | Supported? | Encoding Details |
+|----------------|-----------|------------------|
+| `string`       | ✅ Yes    | Stored as raw UTF-8 bytes |
+| `int32`        | ✅ Yes    | Converted to `int64` for uniform sorting |
+| `int64`        | ✅ Yes    | Sign-bit flipped for correct ordering |
+| `uint32`       | ✅ Yes    | Big-endian encoded |
+| `uint64`       | ✅ Yes    | Big-endian encoded |
+| `float32`      | ✅ Yes    | IEEE 754 encoded with sign-bit transformation |
+| `float64`      | ✅ Yes    | IEEE 754 encoded with sign-bit transformation |
+| `bool`         | ✅ Yes    | `true → 0x01`, `false → 0x00` |
+| `uuid.UUID`    | ✅ Yes    | 16-byte raw representation |
+| `[]byte`       | ✅ Yes    | Stored as-is |
+| `time.Time`    | ✅ Yes    | Encoded as `int64` nanoseconds since Unix epoch |
+| `time.Duration`| ✅ Yes    | Encoded as `int64` nanoseconds |
 
 
 ## 📌 **Key Functions**
