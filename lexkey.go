@@ -15,7 +15,7 @@ import (
 // Special bytes used in lexicographic encoding
 const (
 	separatorByte = 0x00
-	endMarkerByte = 0xFF
+	EndMarker     = 0xFF
 )
 
 // LexKey represents an encoded key as a byte slice, optimized for lexicographic sorting.
@@ -103,7 +103,7 @@ func (e *LexKey) UnmarshalJSON(data []byte) error {
 func (e LexKey) EncodeLast() []byte {
 	newKey := make([]byte, len(e)+1)
 	copy(newKey, e)
-	newKey[len(e)] = endMarkerByte
+	newKey[len(e)] = EndMarker
 	return newKey
 }
 
@@ -286,13 +286,13 @@ func encodeBoundary(partitionKey, rowKey LexKey, isUpper, withPartitionKey bool)
 		n += copy(result, partitionKey)
 	}
 	if len(rowKey) == 0 {
-		result[n] = ternary(isUpper, endMarkerByte, separatorByte)
+		result[n] = ternary(isUpper, EndMarker, separatorByte)
 	} else {
 		result[n] = separatorByte
 		n++
 		copy(result[n:], rowKey)
 		if isUpper {
-			result[len(result)-1] = endMarkerByte
+			result[len(result)-1] = EndMarker
 		}
 	}
 	return result
