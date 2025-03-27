@@ -23,7 +23,7 @@ type PrimaryKey struct {
 	RowKey       LexKey
 }
 
-// Encode concatenates PartitionKey and RowKey with a separator.
+// Encode concatenates PartitionKey and RowKey with a Seperator.
 func (pk PrimaryKey) Encode() LexKey {
 	result := make(LexKey, len(pk.PartitionKey)+len(pk.RowKey)+1)
 	n := copy(result, pk.PartitionKey)
