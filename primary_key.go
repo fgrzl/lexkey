@@ -1,6 +1,7 @@
 package lexkey
 
 import (
+	"bytes"
 	"log/slog"
 )
 
@@ -30,4 +31,18 @@ func (pk PrimaryKey) Encode() LexKey {
 	result[n] = Seperator
 	copy(result[n+1:], pk.RowKey)
 	return result
+}
+
+func DecodePrimaryKey(raw []byte) PrimaryKey {
+	sep := bytes.IndexByte(raw, Seperator)
+	if sep < 0 {
+		// Invalid format: no separator found
+		slog.Warn("DecodePrimaryKey: missing separator", "raw", raw)
+		return PrimaryKey{}
+	}
+
+	return NewPrimaryKey(
+		append([]byte(nil), raw[:sep]...),
+		append([]byte(nil), raw[sep+1:]...),
+	)
 }
