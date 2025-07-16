@@ -8,6 +8,14 @@ func NewRangeKey(partition, lower, upper LexKey) RangeKey {
 	}
 }
 
+func NewRangeKeyFull(partition LexKey) RangeKey {
+	return RangeKey{
+		PartitionKey: partition,
+		StartRowKey:  Empty,
+		EndRowKey:    Last,
+	}
+}
+
 // RangeKey defines a range query over keys.
 type RangeKey struct {
 	PartitionKey LexKey

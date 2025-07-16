@@ -18,7 +18,10 @@ const (
 	EndMarker = 0xFF // Marks the end of a range for lexicographic sorting
 )
 
-var Empty = LexKey{}
+var (
+	Empty = LexKey{}
+	Last  = Encode(EndMarker)
+)
 
 // LexKey represents an encoded key as a byte slice, optimized for lexicographic sorting.
 // An empty LexKey (length 0) is valid and distinct from nil.
