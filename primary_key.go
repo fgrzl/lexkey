@@ -2,20 +2,19 @@ package lexkey
 
 import (
 	"bytes"
-	"log/slog"
+	"errors"
 )
 
 // NewPrimaryKey creates a new PrimaryKey from partition and row keys.
 // Returns an error if either key is nil.
-func NewPrimaryKey(partitionKey, rowKey LexKey) PrimaryKey {
+func NewPrimaryKey(partitionKey, rowKey LexKey) (PrimaryKey, error) {
 	if partitionKey == nil || rowKey == nil {
-		slog.Error("partitionKey and rowKey cannot be nil")
-		return PrimaryKey{}
+		return PrimaryKey{}, errors.New("partitionKey and rowKey cannot be nil")
 	}
 	return PrimaryKey{
 		PartitionKey: partitionKey,
 		RowKey:       rowKey,
-	}
+	}, nil
 }
 
 // PrimaryKey represents a composite key for key-value storage.
@@ -33,14 +32,13 @@ func (pk PrimaryKey) Encode() LexKey {
 	return result
 }
 
-func DecodePrimaryKey(raw []byte) PrimaryKey {
+// DecodePrimaryKey decodes a PrimaryKey from its byte encoding.
+// Returns an error if the separator is missing or input is invalid.
+func DecodePrimaryKey(raw []byte) (PrimaryKey, error) {
 	sep := bytes.IndexByte(raw, Seperator)
 	if sep < 0 {
-		// Invalid format: no separator found
-		slog.Warn("DecodePrimaryKey: missing separator", "raw", raw)
-		return PrimaryKey{}
+		return PrimaryKey{}, errors.New("DecodePrimaryKey: missing separator")
 	}
-
 	return NewPrimaryKey(
 		append([]byte(nil), raw[:sep]...),
 		append([]byte(nil), raw[sep+1:]...),
