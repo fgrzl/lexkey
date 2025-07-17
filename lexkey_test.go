@@ -57,9 +57,9 @@ func TestNewLexKey(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := NewLexKey(tt.parts...)
 			if tt.wantErr {
-				require.Error(t, err, "Expected an error but got nil")
+				require.Error(t, err)
 			} else {
-				require.NoError(t, err, "Unexpected error: %v", err)
+				require.NoError(t, err)
 				assert.Equal(t, tt.expected, hex.EncodeToString(got), "Encoding mismatch")
 			}
 		})
@@ -67,13 +67,13 @@ func TestNewLexKey(t *testing.T) {
 }
 
 // Test IsEmpty method
-func TestLexKey_IsEmpty(t *testing.T) {
+func TestLexKeyIsEmpty(t *testing.T) {
 	assert.True(t, LexKey{}.IsEmpty())
 	assert.False(t, LexKey{0x01}.IsEmpty())
 }
 
 // Test JSON serialization and deserialization
-func TestLexKey_JSON(t *testing.T) {
+func TestLexKeyJSON(t *testing.T) {
 	key := Encode("test")
 	data, err := json.Marshal(key)
 	require.NoError(t, err)
@@ -86,14 +86,14 @@ func TestLexKey_JSON(t *testing.T) {
 }
 
 // Test lexicographic ordering
-func TestLexKey_Ordering(t *testing.T) {
+func TestLexKeyOrdering(t *testing.T) {
 	key1 := Encode("a")
 	key2 := Encode("b")
 	assert.True(t, string(key1) < string(key2))
 }
 
 // Test EncodeFirst and EncodeLast
-func TestLexKey_EncodeLast(t *testing.T) {
+func TestLexKeyEncodeLast(t *testing.T) {
 	key := Encode("prefix", "a")
 	first := EncodeFirst("prefix")
 	last := EncodeLast("prefix")
@@ -170,7 +170,7 @@ func TestEncodeBoundary(t *testing.T) {
 	assert.Equal(t, "706172746974696f6e00726f77ff", hex.EncodeToString(upper))
 }
 
-func TestEncodeBoundary_WithoutRowKey(t *testing.T) {
+func TestEncodeBoundaryWithoutRowKey(t *testing.T) {
 	partKey := LexKey("partition")
 
 	lower := encodeBoundary(partKey, nil, false, true)
@@ -180,7 +180,7 @@ func TestEncodeBoundary_WithoutRowKey(t *testing.T) {
 	assert.Equal(t, "706172746974696f6eff", hex.EncodeToString(upper))
 }
 
-func TestLexKey_Int64Sorting(t *testing.T) {
+func TestLexKeyInt64Sorting(t *testing.T) {
 	// Generate a range of int64 values from negative to positive
 	values := []int64{-9223372036854775808, -1000000000000, -1000000, -1, 0, 1, 1000000, 1000000000000, 9223372036854775807}
 
@@ -198,7 +198,7 @@ func TestLexKey_Int64Sorting(t *testing.T) {
 	}
 }
 
-func TestLexKey_Int32VsInt64Sorting(t *testing.T) {
+func TestLexKeyInt32VsInt64Sorting(t *testing.T) {
 	// Define a mix of int32 and int64 values
 	values := []any{int32(-2147483648), int64(-9223372036854775808), int32(-100000), int64(-1), int32(0), int64(1), int32(100000), int64(9223372036854775807)}
 
@@ -216,7 +216,7 @@ func TestLexKey_Int32VsInt64Sorting(t *testing.T) {
 	}
 }
 
-func TestEncodeFloat32_NaN(t *testing.T) {
+func TestEncodeFloat32NaN(t *testing.T) {
 	// Create a NaN float32 value
 	nan := float32(math.NaN())
 
@@ -227,7 +227,7 @@ func TestEncodeFloat32_NaN(t *testing.T) {
 	assert.Equal(t, "7fc00001", hex.EncodeToString(encoded), "NaN encoding mismatch")
 }
 
-func TestEncodeFloat64_NaN(t *testing.T) {
+func TestEncodeFloat64NaN(t *testing.T) {
 	// Create a NaN float32 value
 	nan := float64(math.NaN())
 
@@ -238,14 +238,14 @@ func TestEncodeFloat64_NaN(t *testing.T) {
 	assert.Equal(t, "7ff8000000000001", hex.EncodeToString(encoded), "NaN encoding mismatch")
 }
 
-func TestNewPrimaryKey_NilValues(t *testing.T) {
+func TestNewPrimaryKeyNilValues(t *testing.T) {
 	// Attempt to create a PrimaryKey with nil values
 	assert.Panics(t, func() {
 		_ = NewPrimaryKey(nil, nil)
 	})
 }
 
-func TestLexKey_UnmarshalJSON(t *testing.T) {
+func TestLexKeyUnmarshalJSON(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
@@ -266,14 +266,14 @@ func TestLexKey_UnmarshalJSON(t *testing.T) {
 			if tt.wantErr {
 				require.Error(t, err, "Expected an error but got nil")
 			} else {
-				require.NoError(t, err, "Unexpected error: %v", err)
+				require.NoError(t, err)
 				assert.Equal(t, tt.expected, key, "Unmarshaled value mismatch")
 			}
 		})
 	}
 }
 
-func TestLexKey_ToHexString(t *testing.T) {
+func TestLexKeyToHexString(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    LexKey
@@ -292,7 +292,7 @@ func TestLexKey_ToHexString(t *testing.T) {
 	}
 }
 
-func TestLexKey_FromHexString(t *testing.T) {
+func TestLexKeyFromHexString(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
