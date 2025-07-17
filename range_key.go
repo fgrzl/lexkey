@@ -1,12 +1,16 @@
 package lexkey
 
-import "errors"
-
 // NewRangeKey creates a RangeKey for a given partition and row key range.
 // Returns an error if the partition key is nil.
 func NewRangeKey(partition, lower, upper LexKey) RangeKey {
 	if partition == nil {
 		panic("partition key cannot be nil")
+	}
+	if lower == nil {
+		panic("lower key cannot be nil")
+	}
+	if upper == nil {
+		panic("lower key cannot be nil")
 	}
 	return RangeKey{
 		PartitionKey: partition,
@@ -17,15 +21,15 @@ func NewRangeKey(partition, lower, upper LexKey) RangeKey {
 
 // NewRangeKeyFull creates a RangeKey spanning the full partition.
 // Returns an error if the partition key is nil.
-func NewRangeKeyFull(partition LexKey) (RangeKey, error) {
+func NewRangeKeyFull(partition LexKey) RangeKey {
 	if partition == nil {
-		return RangeKey{}, errors.New("partition key cannot be nil")
+		panic("partition key cannot be nil")
 	}
 	return RangeKey{
 		PartitionKey: partition,
 		StartRowKey:  Empty,
 		EndRowKey:    Last,
-	}, nil
+	}
 }
 
 // RangeKey defines a range query over keys.
