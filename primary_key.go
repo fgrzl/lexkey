@@ -7,14 +7,14 @@ import (
 
 // NewPrimaryKey creates a new PrimaryKey from partition and row keys.
 // Returns an error if either key is nil.
-func NewPrimaryKey(partitionKey, rowKey LexKey) (PrimaryKey, error) {
+func NewPrimaryKey(partitionKey, rowKey LexKey) PrimaryKey {
 	if partitionKey == nil || rowKey == nil {
-		return PrimaryKey{}, errors.New("partitionKey and rowKey cannot be nil")
+		panic("partitionKey and rowKey cannot be nil")
 	}
 	return PrimaryKey{
 		PartitionKey: partitionKey,
 		RowKey:       rowKey,
-	}, nil
+	}
 }
 
 // PrimaryKey represents a composite key for key-value storage.
@@ -42,5 +42,5 @@ func DecodePrimaryKey(raw []byte) (PrimaryKey, error) {
 	return NewPrimaryKey(
 		append([]byte(nil), raw[:sep]...),
 		append([]byte(nil), raw[sep+1:]...),
-	)
+	), nil
 }

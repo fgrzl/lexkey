@@ -105,16 +105,15 @@ func TestLexKey_EncodeLast(t *testing.T) {
 
 // Test PrimaryKey encoding
 func TestPrimaryKey(t *testing.T) {
-	pk, err := NewPrimaryKey(LexKey("partition"), LexKey("row"))
-	require.NoError(t, err)
+	pk := NewPrimaryKey(LexKey("partition"), LexKey("row"))
 	encoded := pk.Encode()
 	assert.Equal(t, "706172746974696f6e00726f77", hex.EncodeToString(encoded))
 }
 
 // Test RangeKey encoding
 func TestRangeKey(t *testing.T) {
-	rk, err := NewRangeKey(LexKey("part"), LexKey("start"), LexKey("end"))
-	require.NoError(t, err)
+	rk := NewRangeKey(LexKey("part"), LexKey("start"), LexKey("end"))
+
 	lower, upper := rk.Encode(true)
 	assert.Equal(t, "70617274007374617274", hex.EncodeToString(lower))
 	assert.Equal(t, "7061727400656e64ff", hex.EncodeToString(upper))
@@ -241,8 +240,9 @@ func TestEncodeFloat64_NaN(t *testing.T) {
 
 func TestNewPrimaryKey_NilValues(t *testing.T) {
 	// Attempt to create a PrimaryKey with nil values
-	_, err := NewPrimaryKey(nil, nil)
-	assert.Error(t, err)
+	assert.Panics(t, func() {
+		_ = NewPrimaryKey(nil, nil)
+	})
 }
 
 func TestLexKey_UnmarshalJSON(t *testing.T) {

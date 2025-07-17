@@ -4,15 +4,15 @@ import "errors"
 
 // NewRangeKey creates a RangeKey for a given partition and row key range.
 // Returns an error if the partition key is nil.
-func NewRangeKey(partition, lower, upper LexKey) (RangeKey, error) {
+func NewRangeKey(partition, lower, upper LexKey) RangeKey {
 	if partition == nil {
-		return RangeKey{}, errors.New("partition key cannot be nil")
+		panic("partition key cannot be nil")
 	}
 	return RangeKey{
 		PartitionKey: partition,
 		StartRowKey:  lower,
 		EndRowKey:    upper,
-	}, nil
+	}
 }
 
 // NewRangeKeyFull creates a RangeKey spanning the full partition.
