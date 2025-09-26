@@ -34,22 +34,24 @@ func NewLexKey(parts ...any) (LexKey, error) {
 	if len(parts) == 0 {
 		return LexKey([]byte{}), errors.New("cannot create LexKey: no parts provided")
 	}
-
-	// Pre-allocate result slice based on estimated size
+	// Pre-allocate result slice based on estimated size and write into it
 	size := estimateSize(parts)
-	result := make([]byte, 0, size)
+	result := make([]byte, size)
+	pos := 0
 
 	for i, part := range parts {
-		encoded, err := encodeToBytes(part)
+		n, err := encodeInto(result[pos:], part)
 		if err != nil {
 			return LexKey([]byte{}), fmt.Errorf("cannot encode part %d (%T): %w", i, part, err)
 		}
-		result = append(result, encoded...)
+		pos += n
 		if i < len(parts)-1 {
-			result = append(result, Seperator)
+			// separator between parts
+			result[pos] = Seperator
+			pos++
 		}
 	}
-	return result, nil
+	return result[:pos], nil
 }
 
 // Encode constructs a LexKey from pre-validated parts, panicking if encoding fails.
@@ -132,50 +134,97 @@ func (e *LexKey) UnmarshalJSON(data []byte) error {
 // encodeToBytes converts a value to a lexicographically sortable byte representation.
 // Returns an error if the type is unsupported.
 func encodeToBytes(v any) ([]byte, error) {
+	// Backwards-compatible wrapper: allocate a sufficiently large temp buffer and use encodeInto.
+	// Most types encode into at most 16 bytes (UUID) plus separators.
+	buf := make([]byte, 32)
+	n, err := encodeInto(buf, v)
+	if err != nil {
+		return nil, err
+	}
+	// return a copy of the used portion
+	out := make([]byte, n)
+	copy(out, buf[:n])
+	return out, nil
+}
+
+// encodeInto writes the lexicographic encoding of v into dst and returns the number of bytes written.
+// dst must be large enough to hold the encoding; caller is responsible for sizing it (estimateSize).
+func encodeInto(dst []byte, v any) (int, error) {
 	switch v := v.(type) {
 	case string:
-		return []byte(v), nil
+		n := copy(dst, v)
+		return n, nil
 	case uuid.UUID:
-		return v[:], nil
+		n := copy(dst, v[:])
+		return n, nil
 	case LexKey:
-		return v, nil
+		n := copy(dst, v)
+		return n, nil
 	case []byte:
-		return v, nil
+		n := copy(dst, v)
+		return n, nil
 	case int:
-		return encodeInt64(int64(v)), nil
+		b := encodeInt64(int64(v))
+		n := copy(dst, b)
+		return n, nil
 	case int64:
-		return encodeInt64(v), nil
+		b := encodeInt64(v)
+		n := copy(dst, b)
+		return n, nil
 	case int32:
-		return encodeInt32(v), nil
+		b := encodeInt32(v)
+		n := copy(dst, b)
+		return n, nil
 	case int16:
-		return encodeInt16(v), nil
+		b := encodeInt16(v)
+		n := copy(dst, b)
+		return n, nil
 	case uint64:
-		return encodeUint64(v), nil
+		b := encodeUint64(v)
+		n := copy(dst, b)
+		return n, nil
 	case uint32:
-		return encodeUint32(v), nil
+		b := encodeUint32(v)
+		n := copy(dst, b)
+		return n, nil
 	case uint16:
-		return encodeUint16(v), nil
+		b := encodeUint16(v)
+		n := copy(dst, b)
+		return n, nil
 	case uint8:
-		return []byte{v}, nil
+		dst[0] = v
+		return 1, nil
 	case float64:
-		return encodeFloat64(v), nil
+		b := encodeFloat64(v)
+		n := copy(dst, b)
+		return n, nil
 	case float32:
-		return encodeFloat32(v), nil
+		b := encodeFloat32(v)
+		n := copy(dst, b)
+		return n, nil
 	case bool:
 		if v {
-			return []byte{1}, nil
+			dst[0] = 1
+		} else {
+			dst[0] = 0
 		}
-		return []byte{0}, nil
+		return 1, nil
 	case time.Time:
-		return encodeInt64(v.UTC().UnixNano()), nil
+		b := encodeInt64(v.UTC().UnixNano())
+		n := copy(dst, b)
+		return n, nil
 	case time.Duration:
-		return encodeInt64(int64(v)), nil
+		b := encodeInt64(int64(v))
+		n := copy(dst, b)
+		return n, nil
 	case nil:
-		return []byte{Seperator}, nil
+		dst[0] = Seperator
+		return 1, nil
 	case struct{}:
-		return []byte{EndMarker}, nil
+		dst[0] = EndMarker
+		return 1, nil
 	default:
-		return nil, fmt.Errorf("unsupported type %T", v)
+		return 0, fmt.Errorf("unsupported type %T", v)
 	}
 }
 
