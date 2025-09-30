@@ -320,3 +320,188 @@ func TestLexKeyFromHexString(t *testing.T) {
 		})
 	}
 }
+
+func TestDecodePrimaryKeySuccessAndError(t *testing.T) {
+	pk := NewPrimaryKey(Encode("part"), Encode("row"))
+	encoded := pk.Encode()
+
+	decoded, err := DecodePrimaryKey(encoded)
+	require.NoError(t, err)
+	assert.Equal(t, pk.PartitionKey, decoded.PartitionKey)
+	assert.Equal(t, pk.RowKey, decoded.RowKey)
+
+	// invalid input (no separator)
+	_, err = DecodePrimaryKey([]byte("invalid"))
+	require.Error(t, err)
+}
+
+func TestNewRangeKeyPanicsAndFull(t *testing.T) {
+	// Panics for nil partition
+	assert.Panics(t, func() { _ = NewRangeKey(nil, Encode("a"), Encode("b")) })
+	// Panics for nil lower
+	assert.Panics(t, func() { _ = NewRangeKey(Encode("p"), nil, Encode("b")) })
+	// Panics for nil upper
+	assert.Panics(t, func() { _ = NewRangeKey(Encode("p"), Encode("a"), nil) })
+
+	// NewRangeKeyFull panics when partition is nil
+	assert.Panics(t, func() { _ = NewRangeKeyFull(nil) })
+
+	// Normal NewRangeKeyFull
+	rk := NewRangeKeyFull(Encode("tenant"))
+	assert.Equal(t, Empty, rk.StartRowKey)
+	assert.Equal(t, Last, rk.EndRowKey)
+}
+
+func TestEncodeToBytesAndEncodeIntoUnsupported(t *testing.T) {
+	// encodeToBytes wrapper should return an error for unsupported types
+	_, err := encodeToBytes(map[int]int{1: 2})
+	require.Error(t, err)
+
+	// encodeInto should also return error for unsupported types
+	buf := make([]byte, 64)
+	_, err = encodeInto(buf, map[string]int{"a": 1})
+	require.Error(t, err)
+}
+
+func TestEncodeIntoSpecialCasesAndEstimateSizeDefault(t *testing.T) {
+	dst := make([]byte, 16)
+
+	// nil encodes to separator
+	n, err := encodeInto(dst, nil)
+	require.NoError(t, err)
+	assert.Equal(t, 1, n)
+	assert.Equal(t, byte(Seperator), dst[0])
+
+	// struct{} encodes to EndMarker
+	n, err = encodeInto(dst, struct{}{})
+	require.NoError(t, err)
+	assert.Equal(t, 1, n)
+	assert.Equal(t, byte(EndMarker), dst[0])
+
+	// estimateSize with unsupported/default types
+	parts := []any{"a", struct{}{}, map[int]int{1: 2}, int64(5)}
+	// expected size: len("a")=1 + struct{}=1 + default(map)=1 + int64=8
+	// separators between 4 parts = 3
+	// compute manually: 1 + 1 + 1 + 8 + 3 = 14
+	expected := 14
+	got := estimateSize(parts)
+	assert.Equal(t, expected, got)
+}
+
+func TestEncodeToBytesSuccessCases(t *testing.T) {
+	// string
+	bs, err := encodeToBytes("abc")
+	require.NoError(t, err)
+	assert.Equal(t, "616263", hexEncode(bs))
+
+	// int
+	bs, err = encodeToBytes(int64(123))
+	require.NoError(t, err)
+	assert.Equal(t, "800000000000007b", hexEncode(bs))
+
+	// uint8
+	bs, err = encodeToBytes(uint8(255))
+	require.NoError(t, err)
+	assert.Equal(t, "ff", hexEncode(bs))
+
+	// bool
+	bs, err = encodeToBytes(true)
+	require.NoError(t, err)
+	assert.Equal(t, "01", hexEncode(bs))
+}
+
+func TestEstimateSizeSinglePart(t *testing.T) {
+	// single string should not add separator
+	parts := []any{"single"}
+	sz := estimateSize(parts)
+	assert.Equal(t, len("single"), sz)
+}
+
+// helper for hex encoding bytes in tests
+func hexEncode(b []byte) string {
+	// simple inline hex encoding to avoid extra imports
+	const hextable = "0123456789abcdef"
+	out := make([]byte, len(b)*2)
+	for i := 0; i < len(b); i++ {
+		out[i*2] = hextable[b[i]>>4]
+		out[i*2+1] = hextable[b[i]&0x0f]
+	}
+	return string(out)
+}
+
+func TestEncodeIntoAllSupportedTypes(t *testing.T) {
+	buf := make([]byte, 64)
+	// prepare values for each case
+	vals := []any{
+		"somestring",
+		uuid.MustParse("550e8400-e29b-41d4-a716-446655440000"),
+		LexKey("lk"),
+		[]byte("bytes"),
+		int(123),
+		int64(1234567890123),
+		int32(12345),
+		int16(1234),
+		uint64(9876543210),
+		uint32(1234567),
+		uint16(54321),
+		uint8(7),
+		float64(1.2345),
+		float32(2.71828),
+		true,
+		time.Now(),
+		time.Duration(42),
+		nil,
+		struct{}{},
+	}
+
+	for _, v := range vals {
+		n, err := encodeInto(buf, v)
+		require.NoError(t, err)
+		require.Greater(t, n, 0)
+	}
+}
+
+func TestEstimateSizeAllCases(t *testing.T) {
+	parts := []any{
+		"abc",
+		uuid.MustParse("550e8400-e29b-41d4-a716-446655440000"),
+		LexKey("lk"),
+		[]byte("b"),
+		int64(1),
+		int32(2),
+		int16(3),
+		uint64(4),
+		uint32(5),
+		uint16(6),
+		uint8(7),
+		float64(1.1),
+		float32(2.2),
+		true,
+		time.Now(),
+		time.Duration(3),
+		nil,
+		struct{}{},
+		map[int]int{1: 1}, // default branch
+	}
+	// just ensure it runs and returns > 0
+	sz := estimateSize(parts)
+	require.Greater(t, sz, 0)
+}
+
+func TestEncodeSizeAndEncodeInto(t *testing.T) {
+	parts := []any{"tenant", "table", "user", int64(42), true}
+	need := EncodeSize(parts...)
+	buf := make([]byte, need)
+	n, err := EncodeInto(buf, parts...)
+	require.NoError(t, err)
+	require.Equal(t, need, n)
+
+	// Compare with Encode for exact bytes
+	got := buf[:n]
+	want := Encode(parts...)
+	assert.Equal(t, want, LexKey(got))
+
+	// Too small buffer should error
+	_, err = EncodeInto(buf[:need-1], parts...)
+	require.Error(t, err)
+}

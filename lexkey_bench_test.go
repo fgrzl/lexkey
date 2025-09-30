@@ -3,6 +3,7 @@ package lexkey
 import (
 	"fmt"
 	"math"
+	"sort"
 	"testing"
 	"time"
 
@@ -33,6 +34,92 @@ func BenchmarkNewLexKey(b *testing.B) {
 				_, _ = NewLexKey(tc.parts...)
 			}
 		})
+	}
+}
+
+// BenchmarkEncodeIntoPrealloc measures using encodeInto with a freshly allocated buffer each iteration
+func BenchmarkEncodeIntoPrealloc(b *testing.B) {
+	parts := []any{"tenant", "user", 123, uuid.New(), time.Now(), true, []byte("metadata")}
+	size := estimateSize(parts)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		buf := make([]byte, size)
+		pos := 0
+		for j, p := range parts {
+			n, _ := encodeInto(buf[pos:], p)
+			pos += n
+			if j < len(parts)-1 {
+				buf[pos] = Seperator
+				pos++
+			}
+		}
+		_ = buf[:pos]
+	}
+}
+
+// BenchmarkEncodeIntoReuse measures using encodeInto with a single reused buffer
+func BenchmarkEncodeIntoReuse(b *testing.B) {
+	parts := []any{"tenant", "user", 123, uuid.New(), time.Now(), true, []byte("metadata")}
+	size := estimateSize(parts)
+	buf := make([]byte, size)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		pos := 0
+		for j, p := range parts {
+			n, _ := encodeInto(buf[pos:], p)
+			pos += n
+			if j < len(parts)-1 {
+				buf[pos] = Seperator
+				pos++
+			}
+		}
+		_ = buf[:pos]
+	}
+}
+
+// BenchmarkEncodeParallel measures concurrent encoding using per-goroutine buffers
+func BenchmarkEncodeParallel(b *testing.B) {
+	parts := []any{"tenant", "user", 123, uuid.New(), time.Now(), true, []byte("metadata")}
+	size := estimateSize(parts)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		localBuf := make([]byte, size)
+		for pb.Next() {
+			pos := 0
+			for j, p := range parts {
+				n, _ := encodeInto(localBuf[pos:], p)
+				pos += n
+				if j < len(parts)-1 {
+					localBuf[pos] = Seperator
+					pos++
+				}
+			}
+			_ = localBuf[:pos]
+		}
+	})
+}
+
+// BenchmarkSortLargeKeys benchmarks sorting a large slice of keys
+func BenchmarkSortLargeKeys(b *testing.B) {
+	// prepare baseline keys
+	N := 2000
+	keys := make([]LexKey, N)
+	for i := 0; i < N; i++ {
+		keys[i] = Encode("user", i, uuid.New())
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		copyKeys := make([]LexKey, len(keys))
+		copy(copyKeys, keys)
+		sort.Slice(copyKeys, func(i, j int) bool { return Compare(copyKeys[i], copyKeys[j]) < 0 })
 	}
 }
 

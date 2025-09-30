@@ -1,6 +1,7 @@
 package lexkey
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -93,6 +94,34 @@ func (e LexKey) ToHexString() string {
 	return hex.EncodeToString(e)
 }
 
+// EncodeSize returns the exact number of bytes required to encode the given parts,
+// including separators. Use this to pre-allocate a destination buffer for EncodeInto.
+func EncodeSize(parts ...any) int {
+	return estimateSize(parts)
+}
+
+// EncodeInto writes the encoding of parts into dst and returns the number of bytes written.
+// The dst slice must have length >= EncodeSize(parts...). No allocations are performed.
+func EncodeInto(dst []byte, parts ...any) (int, error) {
+	need := estimateSize(parts)
+	if len(dst) < need {
+		return 0, fmt.Errorf("EncodeInto: dst too small: need %d bytes, have %d", need, len(dst))
+	}
+	pos := 0
+	for i, part := range parts {
+		n, err := encodeInto(dst[pos:], part)
+		if err != nil {
+			return 0, fmt.Errorf("cannot encode part %d (%T): %w", i, part, err)
+		}
+		pos += n
+		if i < len(parts)-1 {
+			dst[pos] = Seperator
+			pos++
+		}
+	}
+	return pos, nil
+}
+
 // FromHexString decodes a hexadecimal string back into a LexKey.
 // Sets to an empty slice (not nil) for an empty input string.
 // Returns an error if the hex string is invalid.
@@ -164,44 +193,56 @@ func encodeInto(dst []byte, v any) (int, error) {
 		n := copy(dst, v)
 		return n, nil
 	case int:
-		b := encodeInt64(int64(v))
-		n := copy(dst, b)
-		return n, nil
+		// encode as int64
+		binary.BigEndian.PutUint64(dst, uint64(int64(v))^0x8000000000000000)
+		return 8, nil
 	case int64:
-		b := encodeInt64(v)
-		n := copy(dst, b)
-		return n, nil
+		binary.BigEndian.PutUint64(dst, uint64(v)^0x8000000000000000)
+		return 8, nil
 	case int32:
-		b := encodeInt32(v)
-		n := copy(dst, b)
-		return n, nil
+		binary.BigEndian.PutUint32(dst, uint32(v)^0x80000000)
+		return 4, nil
 	case int16:
-		b := encodeInt16(v)
-		n := copy(dst, b)
-		return n, nil
+		binary.BigEndian.PutUint16(dst, uint16(v)^0x8000)
+		return 2, nil
 	case uint64:
-		b := encodeUint64(v)
-		n := copy(dst, b)
-		return n, nil
+		binary.BigEndian.PutUint64(dst, v)
+		return 8, nil
 	case uint32:
-		b := encodeUint32(v)
-		n := copy(dst, b)
-		return n, nil
+		binary.BigEndian.PutUint32(dst, v)
+		return 4, nil
 	case uint16:
-		b := encodeUint16(v)
-		n := copy(dst, b)
-		return n, nil
+		binary.BigEndian.PutUint16(dst, v)
+		return 2, nil
 	case uint8:
 		dst[0] = v
 		return 1, nil
 	case float64:
-		b := encodeFloat64(v)
-		n := copy(dst, b)
-		return n, nil
+		if math.IsNaN(v) {
+			binary.BigEndian.PutUint64(dst, 0x7FF8000000000001)
+			return 8, nil
+		}
+		bits := math.Float64bits(v)
+		if v < 0 {
+			bits = ^bits
+		} else {
+			bits ^= 1 << 63
+		}
+		binary.BigEndian.PutUint64(dst, bits)
+		return 8, nil
 	case float32:
-		b := encodeFloat32(v)
-		n := copy(dst, b)
-		return n, nil
+		if math.IsNaN(float64(v)) {
+			binary.BigEndian.PutUint32(dst, 0x7FC00001)
+			return 4, nil
+		}
+		bits := math.Float32bits(v)
+		if v < 0 {
+			bits = ^bits
+		} else {
+			bits ^= 1 << 31
+		}
+		binary.BigEndian.PutUint32(dst, bits)
+		return 4, nil
 	case bool:
 		if v {
 			dst[0] = 1
@@ -210,13 +251,13 @@ func encodeInto(dst []byte, v any) (int, error) {
 		}
 		return 1, nil
 	case time.Time:
-		b := encodeInt64(v.UTC().UnixNano())
-		n := copy(dst, b)
-		return n, nil
+		// encode as int64 of UnixNano with sign flip
+		t := v.UTC().UnixNano()
+		binary.BigEndian.PutUint64(dst, uint64(t)^0x8000000000000000)
+		return 8, nil
 	case time.Duration:
-		b := encodeInt64(int64(v))
-		n := copy(dst, b)
-		return n, nil
+		binary.BigEndian.PutUint64(dst, uint64(int64(v))^0x8000000000000000)
+		return 8, nil
 	case nil:
 		dst[0] = Seperator
 		return 1, nil
@@ -268,49 +309,6 @@ func estimateSize(parts []any) int {
 	return size
 }
 
-// encodeInt64 encodes an int64 into 8 bytes, flipping the sign bit for lexicographic ordering.
-// Negative numbers sort before positive ones by XORing with 0x8000000000000000.
-func encodeInt64(v int64) []byte {
-	buf := make([]byte, 8)
-	binary.BigEndian.PutUint64(buf, uint64(v)^0x8000000000000000)
-	return buf
-}
-
-// encodeInt32 encodes an int32 into 4 bytes, flipping the sign bit for lexicographic ordering.
-func encodeInt32(v int32) []byte {
-	buf := make([]byte, 4)
-	binary.BigEndian.PutUint32(buf, uint32(v)^0x80000000)
-	return buf
-}
-
-// encodeInt16 encodes an int16 into 2 bytes, flipping the sign bit for lexicographic ordering.
-func encodeInt16(v int16) []byte {
-	buf := make([]byte, 2)
-	binary.BigEndian.PutUint16(buf, uint16(v)^0x8000)
-	return buf
-}
-
-// encodeUint64 encodes a uint64 into 8 bytes, preserving natural order.
-func encodeUint64(v uint64) []byte {
-	buf := make([]byte, 8)
-	binary.BigEndian.PutUint64(buf, v)
-	return buf
-}
-
-// encodeUint32 encodes a uint32 into 4 bytes, preserving natural order.
-func encodeUint32(v uint32) []byte {
-	buf := make([]byte, 4)
-	binary.BigEndian.PutUint32(buf, v)
-	return buf
-}
-
-// encodeUint16 encodes a uint16 into 2 bytes, preserving natural order.
-func encodeUint16(v uint16) []byte {
-	buf := make([]byte, 2)
-	binary.BigEndian.PutUint16(buf, v)
-	return buf
-}
-
 // encodeFloat64 encodes a float64 into 8 bytes, ensuring lexicographic ordering.
 // Flips the sign bit for positive numbers and all bits for negative numbers.
 // NaN is encoded as a canonical value (0x7FF8000000000001).
@@ -347,4 +345,9 @@ func encodeFloat32(v float32) []byte {
 	}
 	binary.BigEndian.PutUint32(buf, bits)
 	return buf
+}
+
+// Compare returns -1, 0, 1 for a < b, a == b, a > b respectively without allocations.
+func Compare(a, b LexKey) int {
+	return bytes.Compare(a, b)
 }
