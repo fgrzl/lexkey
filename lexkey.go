@@ -31,27 +31,8 @@ type LexKey []byte
 // Returns an error if parts is empty or contains unsupported types.
 // The resulting key is a concatenation of encoded parts separated by Seperator bytes.
 func NewLexKey(parts ...any) (LexKey, error) {
-	if len(parts) == 0 {
-		return LexKey([]byte{}), errors.New("cannot create LexKey: no parts provided")
-	}
-	// Pre-allocate result slice based on estimated size and write into it
-	size := estimateSize(parts)
-	result := make([]byte, size)
-	pos := 0
-
-	for i, part := range parts {
-		n, err := encodeInto(result[pos:], part)
-		if err != nil {
-			return LexKey([]byte{}), fmt.Errorf("cannot encode part %d (%T): %w", i, part, err)
-		}
-		pos += n
-		if i < len(parts)-1 {
-			// separator between parts
-			result[pos] = Seperator
-			pos++
-		}
-	}
-	return result[:pos], nil
+	// Default behavior: canonicalize numeric widths before encoding (BREAKING CHANGE).
+	return NewLexKeyCanonicalWidth(parts...)
 }
 
 // Encode constructs a LexKey from pre-validated parts, panicking if encoding fails.
@@ -63,6 +44,114 @@ func Encode(parts ...any) LexKey {
 		panic(fmt.Sprintf("failed to encode key with pre-validated parts: %v", err))
 	}
 	return key
+}
+
+// canonicalizeNumericWidth converts narrower numeric types to 64-bit widths so
+// cross-width numeric values sort identically (e.g., uint32(1) vs uint64(1)).
+// It does NOT merge signed and unsigned domains, nor ints vs floats.
+// Mapping:
+// - int, int8, int16, int32 -> int64
+// - uint8, uint16, uint32 -> uint64
+// - float32 -> float64
+// Other types unchanged.
+func canonicalizeNumericWidth(v any) any {
+	switch x := v.(type) {
+	case int:
+		return int64(x)
+	case int8:
+		return int64(x)
+	case int16:
+		return int64(x)
+	case int32:
+		return int64(x)
+	case uint8:
+		return uint64(x)
+	case uint16:
+		return uint64(x)
+	case uint32:
+		return uint64(x)
+	case float32:
+		return float64(x)
+	default:
+		return v
+	}
+}
+
+// NewLexKeyCanonicalWidth constructs a LexKey after normalizing numeric widths
+// so cross-width numeric values sort logically. Backwards-compatible: bytes differ
+// from NewLexKey because widths are canonicalized; use only if you control both sides.
+func NewLexKeyCanonicalWidth(parts ...any) (LexKey, error) {
+	if len(parts) == 0 {
+		return LexKey([]byte{}), errors.New("cannot create LexKey: no parts provided")
+	}
+	canon := make([]any, len(parts))
+	for i, p := range parts {
+		canon[i] = canonicalizeNumericWidth(p)
+	}
+	size := estimateSize(canon)
+	result := make([]byte, size)
+	pos := 0
+	for i, part := range canon {
+		n, err := encodeInto(result[pos:], part)
+		if err != nil {
+			return LexKey([]byte{}), fmt.Errorf("cannot encode part %d (%T): %w", i, part, err)
+		}
+		pos += n
+		if i < len(canon)-1 {
+			result[pos] = Seperator
+			pos++
+		}
+	}
+	return result[:pos], nil
+}
+
+// EncodeCanonicalWidth panics on error; see NewLexKeyCanonicalWidth.
+func EncodeCanonicalWidth(parts ...any) LexKey {
+	key, err := NewLexKeyCanonicalWidth(parts...)
+	if err != nil {
+		panic(fmt.Sprintf("failed to encode canonical-width key: %v", err))
+	}
+	return key
+}
+
+// EncodeSizeCanonicalWidth returns the size after width canonicalization.
+func EncodeSizeCanonicalWidth(parts ...any) int {
+	if len(parts) == 0 {
+		return 0
+	}
+	canon := make([]any, len(parts))
+	for i, p := range parts {
+		canon[i] = canonicalizeNumericWidth(p)
+	}
+	return estimateSize(canon)
+}
+
+// EncodeIntoCanonicalWidth writes the canonical-width encoding into dst.
+func EncodeIntoCanonicalWidth(dst []byte, parts ...any) (int, error) {
+	if len(parts) == 0 {
+		return 0, nil
+	}
+	canon := make([]any, len(parts))
+	for i, p := range parts {
+		canon[i] = canonicalizeNumericWidth(p)
+	}
+	need := estimateSize(canon)
+	if len(dst) < need {
+		return 0, fmt.Errorf("EncodeInto: dst too small: need %d bytes, have %d", need, len(dst))
+	}
+	pos := 0
+	for i, part := range canon {
+		n, err := encodeInto(dst[pos:], part)
+		if err != nil {
+			return 0, fmt.Errorf("cannot encode part %d (%T): %w", i, part, err)
+		}
+		pos += n
+		if i < len(canon)-1 {
+			dst[pos] = Seperator
+			pos++
+		}
+	}
+	return pos, nil
 }
 
 // EncodeFirst returns the first lexicographically sortable key in a range.
@@ -96,29 +185,13 @@ func (e LexKey) ToHexString() string {
 // EncodeSize returns the exact number of bytes required to encode the given parts,
 // including separators. Use this to pre-allocate a destination buffer for EncodeInto.
 func EncodeSize(parts ...any) int {
-	return estimateSize(parts)
+	return EncodeSizeCanonicalWidth(parts...)
 }
 
 // EncodeInto writes the encoding of parts into dst and returns the number of bytes written.
 // The dst slice must have length >= EncodeSize(parts...). No allocations are performed.
 func EncodeInto(dst []byte, parts ...any) (int, error) {
-	need := estimateSize(parts)
-	if len(dst) < need {
-		return 0, fmt.Errorf("EncodeInto: dst too small: need %d bytes, have %d", need, len(dst))
-	}
-	pos := 0
-	for i, part := range parts {
-		n, err := encodeInto(dst[pos:], part)
-		if err != nil {
-			return 0, fmt.Errorf("cannot encode part %d (%T): %w", i, part, err)
-		}
-		pos += n
-		if i < len(parts)-1 {
-			dst[pos] = Seperator
-			pos++
-		}
-	}
-	return pos, nil
+	return EncodeIntoCanonicalWidth(dst, parts...)
 }
 
 // FromHexString decodes a hexadecimal string back into a LexKey.
@@ -203,7 +276,8 @@ func encodeToBytes(v any) ([]byte, error) {
 	// Backwards-compatible wrapper: allocate a sufficiently large temp buffer and use encodeInto.
 	// Most types encode into at most 16 bytes (UUID) plus separators.
 	buf := make([]byte, 32)
-	n, err := encodeInto(buf, v)
+	// Apply canonical width so encodeToBytes matches default behavior
+	n, err := encodeInto(buf, canonicalizeNumericWidth(v))
 	if err != nil {
 		return nil, err
 	}

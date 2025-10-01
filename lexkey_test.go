@@ -13,7 +13,7 @@ import (
 )
 
 // Test encoding various types into LexKey
-func TestNewLexKey(t *testing.T) {
+func TestShouldEncodePartsIntoLexKey(t *testing.T) {
 	tests := []struct {
 		name     string
 		parts    []any
@@ -25,20 +25,20 @@ func TestNewLexKey(t *testing.T) {
 		{"Int encoding", []any{123}, "800000000000007b", false},
 		{"Negative int encoding", []any{-123}, "7fffffffffffff85", false},
 
-		{"Int16 encoding", []any{int16(123)}, "807b", false},
-		{"Negative int16 encoding", []any{int16(-123)}, "7f85", false},
+		{"Int16 encoding", []any{int16(123)}, "800000000000007b", false},
+		{"Negative int16 encoding", []any{int16(-123)}, "7fffffffffffff85", false},
 
-		{"Int32 encoding", []any{int32(123)}, "8000007b", false},
-		{"Negative int32 encoding", []any{int32(-123)}, "7fffff85", false},
+		{"Int32 encoding", []any{int32(123)}, "800000000000007b", false},
+		{"Negative int32 encoding", []any{int32(-123)}, "7fffffffffffff85", false},
 		{"Int64 encoding", []any{int64(123)}, "800000000000007b", false},
 		{"Negative int64 encoding", []any{int64(-123)}, "7fffffffffffff85", false},
-		{"UInt8 encoding", []any{uint8(123)}, "7b", false},
-		{"UInt16 encoding", []any{uint16(123)}, "007b", false},
-		{"UInt32 encoding", []any{uint32(123)}, "0000007b", false},
+		{"UInt8 encoding", []any{uint8(123)}, "000000000000007b", false},
+		{"UInt16 encoding", []any{uint16(123)}, "000000000000007b", false},
+		{"UInt32 encoding", []any{uint32(123)}, "000000000000007b", false},
 		{"UInt64 encoding", []any{uint64(123)}, "000000000000007b", false},
-		{"Float32 encoding", []any{float32(3.14)}, "c048f5c3", false},
+		{"Float32 encoding", []any{float32(3.14)}, "c0091eb860000000", false},
 		{"Float64 encoding", []any{3.14}, "c0091eb851eb851f", false},
-		{"Negative float32 encoding", []any{float32(-3.14)}, "3fb70a3c", false},
+		{"Negative float32 encoding", []any{float32(-3.14)}, "3ff6e1479fffffff", false},
 		{"Negative float64 encoding", []any{-3.14}, "3ff6e147ae147ae0", false},
 		{"Boolean true", []any{true}, "01", false},
 		{"Boolean false", []any{false}, "00", false},
@@ -66,121 +66,171 @@ func TestNewLexKey(t *testing.T) {
 	}
 }
 
-// Test IsEmpty method
-func TestLexKeyIsEmpty(t *testing.T) {
-	assert.True(t, LexKey{}.IsEmpty())
-	assert.False(t, LexKey{0x01}.IsEmpty())
+// IsEmpty behavior
+func TestShouldReportEmptyStateForLexKey(t *testing.T) {
+	// Arrange
+	empty := LexKey{}
+	nonEmpty := LexKey{0x01}
+	// Act / Assert
+	assert.True(t, empty.IsEmpty())
+	assert.False(t, nonEmpty.IsEmpty())
 }
 
-// Test JSON serialization and deserialization
-func TestLexKeyJSON(t *testing.T) {
+// JSON behaviors
+func TestShouldMarshalLexKeyToJSON(t *testing.T) {
+	// Arrange
+	key := Encode("test")
+	// Act
+	data, err := json.Marshal(key)
+	// Assert
+	require.NoError(t, err)
+	require.True(t, len(data) > 0)
+}
+
+func TestShouldUnmarshalLexKeyFromJSONRoundTrip(t *testing.T) {
+	// Arrange
 	key := Encode("test")
 	data, err := json.Marshal(key)
 	require.NoError(t, err)
-
+	// Act
 	var decoded LexKey
 	err = json.Unmarshal(data, &decoded)
+	// Assert
 	require.NoError(t, err)
-
 	assert.Equal(t, key, decoded)
 }
 
-// Test lexicographic ordering
-func TestLexKeyOrdering(t *testing.T) {
-	key1 := Encode("a")
-	key2 := Encode("b")
-	assert.True(t, string(key1) < string(key2))
+// Lexicographic ordering behavior
+func TestShouldOrderLexicographicallyGivenDifferentStrings(t *testing.T) {
+	// Arrange
+	a := Encode("a")
+	b := Encode("b")
+	// Act
+	cmp := Compare(a, b)
+	// Assert
+	assert.Less(t, cmp, 0)
 }
 
-// Test EncodeFirst and EncodeLast
-func TestLexKeyEncodeLast(t *testing.T) {
+// EncodeFirst / EncodeLast behaviors
+func TestShouldEncodeFirstBeforeAnyExtension(t *testing.T) {
+	// Arrange
 	key := Encode("prefix", "a")
 	first := EncodeFirst("prefix")
-	last := EncodeLast("prefix")
-
-	assert.True(t, hex.EncodeToString(first) <= hex.EncodeToString(key))
-	assert.True(t, hex.EncodeToString(last) > hex.EncodeToString(key))
-	assert.True(t, hex.EncodeToString(first) < hex.EncodeToString(last))
+	// Act / Assert
+	assert.LessOrEqual(t, hex.EncodeToString(first), hex.EncodeToString(key))
 }
 
-// Test PrimaryKey encoding
-func TestPrimaryKey(t *testing.T) {
+func TestShouldEncodeLastAfterAnyExtension(t *testing.T) {
+	// Arrange
+	key := Encode("prefix", "a")
+	last := EncodeLast("prefix")
+	// Act / Assert
+	assert.Greater(t, hex.EncodeToString(last), hex.EncodeToString(key))
+}
+
+// PrimaryKey behavior
+func TestShouldEncodePrimaryKeyGivenPartitionAndRow(t *testing.T) {
+	// Arrange
 	pk := NewPrimaryKey(LexKey("partition"), LexKey("row"))
+	// Act
 	encoded := pk.Encode()
+	// Assert
 	assert.Equal(t, "706172746974696f6e00726f77", hex.EncodeToString(encoded))
 }
 
-// Test RangeKey encoding
-func TestRangeKey(t *testing.T) {
+// RangeKey behavior
+func TestShouldEncodeRangeKeyGivenPartitionAndBounds(t *testing.T) {
+	// Arrange
 	rk := NewRangeKey(LexKey("part"), LexKey("start"), LexKey("end"))
-
+	// Act
 	lower, upper := rk.Encode(true)
+	// Assert
 	assert.Equal(t, "70617274007374617274", hex.EncodeToString(lower))
 	assert.Equal(t, "7061727400656e64ff", hex.EncodeToString(upper))
 }
 
-// Test encoding numbers// Test encoding numbers
-func TestNumberEncoding(t *testing.T) {
+// Number encoding behaviors
+func TestShouldEncodeIntAsLexOrderedBytes(t *testing.T) {
+	// Arrange / Act
 	intKey := Encode(42)
+	// Assert
 	assert.Equal(t, "800000000000002a", hex.EncodeToString(intKey))
+}
 
+func TestShouldEncodeFloat64AsLexOrderedBytes(t *testing.T) {
+	// Arrange / Act
 	floatKey := Encode(3.14)
-	assert.Equal(t, "c0091eb851eb851f", hex.EncodeToString(floatKey)) // Corrected
+	// Assert
+	assert.Equal(t, "c0091eb851eb851f", hex.EncodeToString(floatKey))
+}
 
+func TestShouldEncodeNegativeIntAsLexOrderedBytes(t *testing.T) {
+	// Arrange / Act
 	negativeIntKey := Encode(-42)
+	// Assert
 	assert.Equal(t, "7fffffffffffffd6", hex.EncodeToString(negativeIntKey))
 }
 
-// Test boolean encoding
-func TestBooleanEncoding(t *testing.T) {
+// Boolean encoding behavior
+func TestShouldEncodeBooleansAsSingleByte(t *testing.T) {
+	// Arrange / Act
 	trueKey := Encode(true)
 	falseKey := Encode(false)
+	// Assert
 	assert.Equal(t, "01", hex.EncodeToString(trueKey))
 	assert.Equal(t, "00", hex.EncodeToString(falseKey))
 }
 
-// Test error cases
-func TestErrorCases(t *testing.T) {
+// Error behaviors
+func TestShouldReturnErrorWhenFromHexStringIsInvalid(t *testing.T) {
+	// Arrange
 	var key LexKey
-
-	// Invalid hex string
+	// Act
 	err := key.FromHexString("invalidhex")
+	// Assert
 	assert.Error(t, err)
+}
 
+func TestShouldPanicWhenEncodingUnsupportedType(t *testing.T) {
+	// Arrange / Act / Assert
 	assert.Panics(t, func() {
 		Encode(make(chan int))
 	})
 }
 
-// Test nil values
-func TestNilValues(t *testing.T) {
+// Nil encoding behavior
+func TestShouldEncodeNilAsSeparatorByte(t *testing.T) {
+	// Arrange / Act
 	nilKey := Encode(nil)
+	// Assert
 	assert.Equal(t, "00", hex.EncodeToString(nilKey))
 }
 
-// Test encodeBoundary function
-func TestEncodeBoundary(t *testing.T) {
+// encodeBoundary behaviors
+func TestShouldEncodeBoundaryGivenPartitionAndRow(t *testing.T) {
+	// Arrange
 	partKey := LexKey("partition")
 	rowKey := LexKey("row")
-
+	// Act
 	lower := encodeBoundary(partKey, rowKey, false, true)
 	upper := encodeBoundary(partKey, rowKey, true, true)
-
+	// Assert
 	assert.Equal(t, "706172746974696f6e00726f77", hex.EncodeToString(lower))
 	assert.Equal(t, "706172746974696f6e00726f77ff", hex.EncodeToString(upper))
 }
 
-func TestEncodeBoundaryWithoutRowKey(t *testing.T) {
+func TestShouldEncodeBoundaryWithoutRowKey(t *testing.T) {
+	// Arrange
 	partKey := LexKey("partition")
-
+	// Act
 	lower := encodeBoundary(partKey, nil, false, true)
 	upper := encodeBoundary(partKey, nil, true, true)
-
+	// Assert
 	assert.Equal(t, "706172746974696f6e00", hex.EncodeToString(lower))
 	assert.Equal(t, "706172746974696f6eff", hex.EncodeToString(upper))
 }
 
-func TestLexKeyInt64Sorting(t *testing.T) {
+func TestShouldSortEncodedInt64ValuesInNumericOrder(t *testing.T) {
 	// Generate a range of int64 values from negative to positive
 	values := []int64{-9223372036854775808, -1000000000000, -1000000, -1, 0, 1, 1000000, 1000000000000, 9223372036854775807}
 
@@ -193,14 +243,14 @@ func TestLexKeyInt64Sorting(t *testing.T) {
 
 	// Ensure the encoded values are sorted in the expected order
 	for i := 0; i < len(encodedKeys)-1; i++ {
-		assert.True(t, string(encodedKeys[i]) < string(encodedKeys[i+1]),
+		assert.True(t, Compare(encodedKeys[i], encodedKeys[i+1]) < 0,
 			"Encoded int64 values are not sorted correctly: %d vs %d", values[i], values[i+1])
 	}
 }
 
-func TestLexKeyInt32VsInt64Sorting(t *testing.T) {
+func TestShouldSortEncodedInt32AndInt64TogetherInNumericOrder(t *testing.T) {
 	// Define a mix of int32 and int64 values
-	values := []any{int32(-2147483648), int64(-9223372036854775808), int32(-100000), int64(-1), int32(0), int64(1), int32(100000), int64(9223372036854775807)}
+	values := []any{int64(-9223372036854775808), int32(-2147483648), int32(-100000), int64(-1), int32(0), int64(1), int32(100000), int64(9223372036854775807)}
 
 	// Encode each value
 	var encodedKeys []LexKey
@@ -211,12 +261,12 @@ func TestLexKeyInt32VsInt64Sorting(t *testing.T) {
 
 	// Ensure the encoded values are sorted in the expected order
 	for i := 0; i < len(encodedKeys)-1; i++ {
-		assert.True(t, string(encodedKeys[i]) < string(encodedKeys[i+1]),
+		assert.True(t, Compare(encodedKeys[i], encodedKeys[i+1]) < 0,
 			"Encoded int32/int64 values are not sorted correctly: %v vs %v", values[i], values[i+1])
 	}
 }
 
-func TestEncodeFloat32NaN(t *testing.T) {
+func TestShouldEncodeFloat32NaNAsCanonical(t *testing.T) {
 	// Create a NaN float32 value
 	nan := float32(math.NaN())
 
@@ -227,7 +277,7 @@ func TestEncodeFloat32NaN(t *testing.T) {
 	assert.Equal(t, "7fc00001", hex.EncodeToString(encoded), "NaN encoding mismatch")
 }
 
-func TestEncodeFloat64NaN(t *testing.T) {
+func TestShouldEncodeFloat64NaNAsCanonical(t *testing.T) {
 	// Create a NaN float32 value
 	nan := float64(math.NaN())
 
@@ -238,14 +288,14 @@ func TestEncodeFloat64NaN(t *testing.T) {
 	assert.Equal(t, "7ff8000000000001", hex.EncodeToString(encoded), "NaN encoding mismatch")
 }
 
-func TestNewPrimaryKeyNilValues(t *testing.T) {
+func TestShouldPanicWhenPrimaryKeyHasNilValues(t *testing.T) {
 	// Attempt to create a PrimaryKey with nil values
 	assert.Panics(t, func() {
 		_ = NewPrimaryKey(nil, nil)
 	})
 }
 
-func TestLexKeyUnmarshalJSON(t *testing.T) {
+func TestShouldUnmarshalLexKeyFromJSON(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
@@ -273,7 +323,7 @@ func TestLexKeyUnmarshalJSON(t *testing.T) {
 	}
 }
 
-func TestLexKeyToHexString(t *testing.T) {
+func TestShouldConvertLexKeyToHexString(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    LexKey
@@ -292,7 +342,7 @@ func TestLexKeyToHexString(t *testing.T) {
 	}
 }
 
-func TestLexKeyFromHexString(t *testing.T) {
+func TestShouldParseHexStringIntoLexKey(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
@@ -321,96 +371,119 @@ func TestLexKeyFromHexString(t *testing.T) {
 	}
 }
 
-func TestDecodePrimaryKeySuccessAndError(t *testing.T) {
+func TestShouldDecodePrimaryKeyGivenValidInput(t *testing.T) {
+	// Arrange
 	pk := NewPrimaryKey(Encode("part"), Encode("row"))
 	encoded := pk.Encode()
-
+	// Act
 	decoded, err := DecodePrimaryKey(encoded)
+	// Assert
 	require.NoError(t, err)
 	assert.Equal(t, pk.PartitionKey, decoded.PartitionKey)
 	assert.Equal(t, pk.RowKey, decoded.RowKey)
+}
 
-	// invalid input (no separator)
-	_, err = DecodePrimaryKey([]byte("invalid"))
+func TestShouldReturnErrorWhenPrimaryKeyInputHasNoSeparator(t *testing.T) {
+	// Arrange / Act
+	_, err := DecodePrimaryKey([]byte("invalid"))
+	// Assert
 	require.Error(t, err)
 }
 
-func TestNewRangeKeyPanicsAndFull(t *testing.T) {
-	// Panics for nil partition
+func TestShouldPanicWhenRangeKeyPartitionIsNil(t *testing.T) {
+	// Arrange / Act / Assert
 	assert.Panics(t, func() { _ = NewRangeKey(nil, Encode("a"), Encode("b")) })
-	// Panics for nil lower
+}
+
+func TestShouldPanicWhenRangeKeyLowerIsNil(t *testing.T) {
+	// Arrange / Act / Assert
 	assert.Panics(t, func() { _ = NewRangeKey(Encode("p"), nil, Encode("b")) })
-	// Panics for nil upper
+}
+
+func TestShouldPanicWhenRangeKeyUpperIsNil(t *testing.T) {
+	// Arrange / Act / Assert
 	assert.Panics(t, func() { _ = NewRangeKey(Encode("p"), Encode("a"), nil) })
+}
 
-	// NewRangeKeyFull panics when partition is nil
+func TestShouldPanicWhenRangeKeyFullPartitionIsNil(t *testing.T) {
+	// Arrange / Act / Assert
 	assert.Panics(t, func() { _ = NewRangeKeyFull(nil) })
+}
 
-	// Normal NewRangeKeyFull
+func TestShouldCreateFullRangeKeyGivenPartition(t *testing.T) {
+	// Arrange / Act
 	rk := NewRangeKeyFull(Encode("tenant"))
+	// Assert
 	assert.Equal(t, Empty, rk.StartRowKey)
 	assert.Equal(t, Last, rk.EndRowKey)
 }
 
-func TestEncodeToBytesAndEncodeIntoUnsupported(t *testing.T) {
-	// encodeToBytes wrapper should return an error for unsupported types
+func TestShouldReturnErrorWhenEncodeToBytesReceivesUnsupportedType(t *testing.T) {
+	// Arrange / Act
 	_, err := encodeToBytes(map[int]int{1: 2})
-	require.Error(t, err)
-
-	// encodeInto should also return error for unsupported types
-	buf := make([]byte, 64)
-	_, err = encodeInto(buf, map[string]int{"a": 1})
+	// Assert
 	require.Error(t, err)
 }
 
-func TestEncodeIntoSpecialCasesAndEstimateSizeDefault(t *testing.T) {
-	dst := make([]byte, 16)
+func TestShouldReturnErrorWhenEncodeIntoReceivesUnsupportedType(t *testing.T) {
+	// Arrange
+	buf := make([]byte, 64)
+	// Act
+	_, err := encodeInto(buf, map[string]int{"a": 1})
+	// Assert
+	require.Error(t, err)
+}
 
-	// nil encodes to separator
+func TestShouldEncodeNilAndStructMarkersWithEncodeInto(t *testing.T) {
+	// Arrange
+	dst := make([]byte, 16)
+	// Act / Assert: nil -> separator
 	n, err := encodeInto(dst, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 1, n)
 	assert.Equal(t, byte(Seperator), dst[0])
-
-	// struct{} encodes to EndMarker
+	// Act / Assert: struct{} -> EndMarker
 	n, err = encodeInto(dst, struct{}{})
 	require.NoError(t, err)
 	assert.Equal(t, 1, n)
 	assert.Equal(t, byte(EndMarker), dst[0])
+}
 
-	// estimateSize with unsupported/default types
+func TestShouldEstimateSizeForDefaultBranch(t *testing.T) {
+	// Arrange
 	parts := []any{"a", struct{}{}, map[int]int{1: 2}, int64(5)}
 	// expected size: len("a")=1 + struct{}=1 + default(map)=1 + int64=8
-	// separators between 4 parts = 3
-	// compute manually: 1 + 1 + 1 + 8 + 3 = 14
+	// separators between 4 parts = 3 => total 14
 	expected := 14
+	// Act
 	got := estimateSize(parts)
+	// Assert
 	assert.Equal(t, expected, got)
 }
 
-func TestEncodeToBytesSuccessCases(t *testing.T) {
-	// string
-	bs, err := encodeToBytes("abc")
-	require.NoError(t, err)
-	assert.Equal(t, "616263", hexEncode(bs))
-
-	// int
-	bs, err = encodeToBytes(int64(123))
-	require.NoError(t, err)
-	assert.Equal(t, "800000000000007b", hexEncode(bs))
-
-	// uint8
-	bs, err = encodeToBytes(uint8(255))
-	require.NoError(t, err)
-	assert.Equal(t, "ff", hexEncode(bs))
-
-	// bool
-	bs, err = encodeToBytes(true)
-	require.NoError(t, err)
-	assert.Equal(t, "01", hexEncode(bs))
+func TestShouldEncodeToBytesForSupportedTypes(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    any
+		expected string
+	}{
+		{"String", "abc", "616263"},
+		{"Int64", int64(123), "800000000000007b"},
+		{"Uint8", uint8(255), "00000000000000ff"},
+		{"BoolTrue", true, "01"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Arrange / Act
+			bs, err := encodeToBytes(tt.input)
+			// Assert
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, hexEncode(bs))
+		})
+	}
 }
 
-func TestEstimateSizeSinglePart(t *testing.T) {
+func TestShouldEstimateSizeForSinglePart(t *testing.T) {
 	// single string should not add separator
 	parts := []any{"single"}
 	sz := estimateSize(parts)
@@ -429,7 +502,7 @@ func hexEncode(b []byte) string {
 	return string(out)
 }
 
-func TestEncodeIntoAllSupportedTypes(t *testing.T) {
+func TestShouldEncodeAllSupportedTypesWithoutError(t *testing.T) {
 	buf := make([]byte, 64)
 	// prepare values for each case
 	vals := []any{
@@ -461,7 +534,7 @@ func TestEncodeIntoAllSupportedTypes(t *testing.T) {
 	}
 }
 
-func TestEstimateSizeAllCases(t *testing.T) {
+func TestShouldEstimateSizeAcrossAllCases(t *testing.T) {
 	parts := []any{
 		"abc",
 		uuid.MustParse("550e8400-e29b-41d4-a716-446655440000"),
@@ -489,7 +562,7 @@ func TestEstimateSizeAllCases(t *testing.T) {
 }
 
 // Ensures monotonic ordering across a large int64 span using a reasonable stride
-func TestLexKeyInt64LargeRangeSorting(t *testing.T) {
+func TestShouldMaintainOrderingAcrossLargeInt64Range(t *testing.T) {
 	const min = int64(-10_000_000)
 	const max = int64(10_000_000)
 	const step = int64(10_000) // 2001 values; keeps test fast
@@ -497,9 +570,7 @@ func TestLexKeyInt64LargeRangeSorting(t *testing.T) {
 	prev := Encode(min)
 	for v := min + step; v <= max; v += step {
 		cur := Encode(v)
-		if !(Compare(prev, cur) < 0) {
-			t.Fatalf("ordering violated at %d: prev=%x cur=%x", v, prev, cur)
-		}
+		require.Less(t, Compare(prev, cur), 0, "ordering violated at %d: prev=%x cur=%x", v, prev, cur)
 		prev = cur
 	}
 
@@ -507,13 +578,11 @@ func TestLexKeyInt64LargeRangeSorting(t *testing.T) {
 	for v := int64(-5); v < 5; v++ {
 		a := Encode(v)
 		b := Encode(v + 1)
-		if !(Compare(a, b) < 0) {
-			t.Fatalf("local ordering violated between %d and %d: %x vs %x", v, v+1, a, b)
-		}
+		require.Less(t, Compare(a, b), 0, "local ordering violated between %d and %d: %x vs %x", v, v+1, a, b)
 	}
 }
 
-func TestEncodeSizeAndEncodeInto(t *testing.T) {
+func TestShouldEncodeIntoGivenPreallocatedBuffer(t *testing.T) {
 	parts := []any{"tenant", "table", "user", int64(42), true}
 	need := EncodeSize(parts...)
 	buf := make([]byte, need)
@@ -525,8 +594,88 @@ func TestEncodeSizeAndEncodeInto(t *testing.T) {
 	got := buf[:n]
 	want := Encode(parts...)
 	assert.Equal(t, want, LexKey(got))
+}
 
-	// Too small buffer should error
-	_, err = EncodeInto(buf[:need-1], parts...)
+func TestShouldReturnErrorWhenEncodeIntoBufferIsTooSmall(t *testing.T) {
+	// Arrange
+	parts := []any{"tenant", "table", "user", int64(42), true}
+	need := EncodeSize(parts...)
+	buf := make([]byte, need-1)
+	// Act
+	_, err := EncodeInto(buf, parts...)
+	// Assert
+	require.Error(t, err)
+}
+
+func TestShouldSortCrossWidthUnsignedIntegersWithCanonicalWidth(t *testing.T) {
+	// Arrange: values in increasing numeric order with mixed widths
+	inputs := []any{uint32(1), uint64(1), uint32(2), uint64(3)}
+	// Act: encode each using canonical width (all unsigned -> uint64)
+	keys := make([]LexKey, len(inputs))
+	for i, v := range inputs {
+		keys[i] = EncodeCanonicalWidth(v)
+	}
+	// Assert: monotonic ordering
+	for i := 0; i < len(keys)-1; i++ {
+		cmp := Compare(keys[i], keys[i+1])
+		// Equal numeric values across widths yield identical bytes after canonicalization
+		if i == 0 { // 1 vs 1
+			assert.LessOrEqual(t, cmp, 0, "index %d vs %d", i, i+1)
+		} else {
+			assert.Less(t, cmp, 0, "index %d vs %d", i, i+1)
+		}
+	}
+}
+
+func TestShouldSortCrossWidthSignedIntegersWithCanonicalWidth(t *testing.T) {
+	// Arrange: mixed signed widths around zero
+	inputs := []any{int32(-1), int64(0), int32(1), int64(2)}
+	// Act
+	keys := make([]LexKey, len(inputs))
+	for i, v := range inputs {
+		keys[i] = EncodeCanonicalWidth(v)
+	}
+	// Assert
+	for i := 0; i < len(keys)-1; i++ {
+		assert.Less(t, Compare(keys[i], keys[i+1]), 0)
+	}
+}
+
+func TestShouldSortCrossWidthFloatsWithCanonicalWidth(t *testing.T) {
+	// Arrange: float32 vs float64
+	inputs := []any{float32(-3.5), float64(0.0), float32(1.25), float64(2.5)}
+	// Act
+	prev := EncodeCanonicalWidth(inputs[0])
+	for i := 1; i < len(inputs); i++ {
+		cur := EncodeCanonicalWidth(inputs[i])
+		assert.Less(t, Compare(prev, cur), 0, "index %d vs %d", i-1, i)
+		prev = cur
+	}
+}
+
+func TestShouldEncodeIntoCanonicalWidthGivenPreallocatedBuffer(t *testing.T) {
+	// Arrange
+	parts := []any{"tenant", uint32(1), uint64(2), float32(1.5), float64(2.5)}
+	need := EncodeSizeCanonicalWidth(parts...)
+	buf := make([]byte, need)
+	// Act
+	n, err := EncodeIntoCanonicalWidth(buf, parts...)
+	// Assert
+	require.NoError(t, err)
+	require.Equal(t, need, n)
+
+	// Compare with EncodeCanonicalWidth for exact bytes
+	want := EncodeCanonicalWidth(parts...)
+	assert.Equal(t, want, LexKey(buf[:n]))
+}
+
+func TestShouldReturnErrorWhenEncodeIntoCanonicalWidthBufferIsTooSmall(t *testing.T) {
+	// Arrange
+	parts := []any{"t", uint32(1), uint64(2)}
+	need := EncodeSizeCanonicalWidth(parts...)
+	buf := make([]byte, need-1)
+	// Act
+	_, err := EncodeIntoCanonicalWidth(buf, parts...)
+	// Assert
 	require.Error(t, err)
 }
