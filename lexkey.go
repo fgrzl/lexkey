@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -143,21 +142,59 @@ func (e *LexKey) FromHexString(hexStr string) error {
 
 // MarshalJSON encodes LexKey as a hex string for JSON serialization.
 func (e LexKey) MarshalJSON() ([]byte, error) {
-	return json.Marshal(e.ToHexString())
+	// Use MarshalText to get hex bytes, then wrap with quotes without extra escaping
+	text, err := e.MarshalText()
+	if err != nil {
+		return nil, err
+	}
+	// Build JSON string: "<hex>"
+	out := make([]byte, len(text)+2)
+	out[0] = '"'
+	copy(out[1:], text)
+	out[len(out)-1] = '"'
+	return out, nil
 }
 
 // UnmarshalJSON decodes a hex string from JSON into a LexKey.
 // Handles JSON null by setting to an empty slice.
 func (e *LexKey) UnmarshalJSON(data []byte) error {
+	// Handle null
 	if string(data) == "null" {
 		*e = []byte{}
 		return nil
 	}
-	var hexStr string
-	if err := json.Unmarshal(data, &hexStr); err != nil {
-		return fmt.Errorf("cannot unmarshal JSON into LexKey: %w", err)
+	// Expect a JSON string: "..."
+	if len(data) >= 2 && data[0] == '"' && data[len(data)-1] == '"' {
+		inner := data[1 : len(data)-1]
+		return e.UnmarshalText(inner)
 	}
-	return e.FromHexString(hexStr)
+	return fmt.Errorf("cannot unmarshal JSON into LexKey: invalid format")
+}
+
+// MarshalText implements encoding.TextMarshaler, returning a hex encoding of the key.
+func (e LexKey) MarshalText() ([]byte, error) {
+	if len(e) == 0 {
+		return []byte{}, nil
+	}
+	dst := make([]byte, hex.EncodedLen(len(e)))
+	hex.Encode(dst, e)
+	return dst, nil
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler, decoding a hex input into the key.
+func (e *LexKey) UnmarshalText(text []byte) error {
+	if len(text) == 0 {
+		*e = []byte{}
+		return nil
+	}
+	// hex.Decode expects even-length; it returns an error on malformed input
+	dst := make([]byte, hex.DecodedLen(len(text)))
+	n, err := hex.Decode(dst, text)
+	if err != nil {
+		return fmt.Errorf("cannot decode hex string: %w", err)
+	}
+	*e = dst[:n]
+	return nil
 }
 
 // encodeToBytes converts a value to a lexicographically sortable byte representation.

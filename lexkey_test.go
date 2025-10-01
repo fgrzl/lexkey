@@ -488,6 +488,31 @@ func TestEstimateSizeAllCases(t *testing.T) {
 	require.Greater(t, sz, 0)
 }
 
+// Ensures monotonic ordering across a large int64 span using a reasonable stride
+func TestLexKeyInt64LargeRangeSorting(t *testing.T) {
+	const min = int64(-10_000_000)
+	const max = int64(10_000_000)
+	const step = int64(10_000) // 2001 values; keeps test fast
+
+	prev := Encode(min)
+	for v := min + step; v <= max; v += step {
+		cur := Encode(v)
+		if !(Compare(prev, cur) < 0) {
+			t.Fatalf("ordering violated at %d: prev=%x cur=%x", v, prev, cur)
+		}
+		prev = cur
+	}
+
+	// Also probe a small dense window around zero to catch sign flip edge-cases
+	for v := int64(-5); v < 5; v++ {
+		a := Encode(v)
+		b := Encode(v + 1)
+		if !(Compare(a, b) < 0) {
+			t.Fatalf("local ordering violated between %d and %d: %x vs %x", v, v+1, a, b)
+		}
+	}
+}
+
 func TestEncodeSizeAndEncodeInto(t *testing.T) {
 	parts := []any{"tenant", "table", "user", int64(42), true}
 	need := EncodeSize(parts...)
