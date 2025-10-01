@@ -3,6 +3,7 @@ package lexkey
 import (
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"math"
 	"testing"
 	"time"
@@ -760,4 +761,28 @@ func TestShouldCanonicalizeVariousWidthsViaEncodeCanonicalWidth(t *testing.T) {
 	// Assert: compare with manually widened equivalents
 	want := Encode(int64(1), int64(-2), uint64(3), uint64(4), float64(1.5))
 	assert.Equal(t, want, k)
+}
+
+func TestShouldPanicWithExpectedMessageForEncodeWrappers(t *testing.T) {
+	// Arrange: obtain the underlying errors first
+	_, err1 := NewLexKey(make(chan int))
+	require.Error(t, err1)
+	expected1 := fmt.Sprintf("failed to encode key with pre-validated parts: %v", err1)
+
+	_, err2 := NewLexKeyCanonicalWidth(make(chan int))
+	require.Error(t, err2)
+	expected2 := fmt.Sprintf("failed to encode canonical-width key: %v", err2)
+
+	// Act / Assert
+	t.Run("Encode wrapper", func(t *testing.T) {
+		msg, ok := capturePanicMessage(func() { Encode(make(chan int)) })
+		require.True(t, ok)
+		assert.Equal(t, expected1, msg)
+	})
+
+	t.Run("EncodeCanonicalWidth wrapper", func(t *testing.T) {
+		msg, ok := capturePanicMessage(func() { EncodeCanonicalWidth(make(chan int)) })
+		require.True(t, ok)
+		assert.Equal(t, expected2, msg)
+	})
 }

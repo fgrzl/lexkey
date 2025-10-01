@@ -156,6 +156,8 @@ func EncodeIntoCanonicalWidth(dst []byte, parts ...any) (int, error) {
 
 // EncodeFirst returns the first lexicographically sortable key in a range.
 // Adds a Seperator byte to the prefix to ensure it sorts before any extension.
+//
+// Note: this calls Encode and will panic on encoding errors (i.e., when given unsupported types).
 func EncodeFirst(parts ...any) LexKey {
 	prefix := Encode(parts...)
 	return append(prefix, Seperator)
@@ -163,6 +165,8 @@ func EncodeFirst(parts ...any) LexKey {
 
 // EncodeLast returns the last lexicographically sortable key in a range.
 // Adds an EndMarker byte to the prefix to ensure it sorts after any extension.
+//
+// Note: this calls Encode and will panic on encoding errors (i.e., when given unsupported types).
 func EncodeLast(parts ...any) LexKey {
 	prefix := Encode(parts...)
 	return append(prefix, EndMarker)
@@ -461,4 +465,16 @@ func encodeFloat32(v float32) []byte {
 // Compare returns -1, 0, 1 for a < b, a == b, a > b respectively without allocations.
 func Compare(a, b LexKey) int {
 	return bytes.Compare(a, b)
+}
+
+// helper captures panic message and whether a panic occurred
+func capturePanicMessage(f func()) (msg string, ok bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			msg = fmt.Sprintf("%v", r)
+			ok = true
+		}
+	}()
+	f()
+	return "", false
 }

@@ -1,7 +1,14 @@
 package lexkey
 
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
 // NewRangeKey creates a RangeKey for a given partition and row key range.
-// Returns an error if the partition key is nil.
+// Panics if the partition key, lower, or upper key is nil.
 func NewRangeKey(partition, lower, upper LexKey) RangeKey {
 	if partition == nil {
 		panic("partition key cannot be nil")
@@ -10,7 +17,7 @@ func NewRangeKey(partition, lower, upper LexKey) RangeKey {
 		panic("lower key cannot be nil")
 	}
 	if upper == nil {
-		panic("lower key cannot be nil")
+		panic("upper key cannot be nil")
 	}
 	return RangeKey{
 		PartitionKey: partition,
@@ -20,7 +27,7 @@ func NewRangeKey(partition, lower, upper LexKey) RangeKey {
 }
 
 // NewRangeKeyFull creates a RangeKey spanning the full partition.
-// Returns an error if the partition key is nil.
+// Panics if the partition key is nil.
 func NewRangeKeyFull(partition LexKey) RangeKey {
 	if partition == nil {
 		panic("partition key cannot be nil")
@@ -84,4 +91,28 @@ func ternary(cond bool, a, b byte) byte {
 		return a
 	}
 	return b
+}
+
+func TestShouldPanicWithExpectedMessagesForRangeKeyConstructors(t *testing.T) {
+	cases := []struct {
+		name     string
+		call     func()
+		expected string
+	}{
+		{"nil partition", func() { NewRangeKey(nil, Encode("a"), Encode("b")) }, "partition key cannot be nil"},
+		{"nil lower", func() { NewRangeKey(Encode("p"), nil, Encode("b")) }, "lower key cannot be nil"},
+		{"nil upper", func() { NewRangeKey(Encode("p"), Encode("a"), nil) }, "upper key cannot be nil"},
+		{"full nil partition", func() { NewRangeKeyFull(nil) }, "partition key cannot be nil"},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			// Act
+			msg, ok := capturePanicMessage(c.call)
+
+			// Assert
+			require.True(t, ok)
+			assert.Equal(t, c.expected, msg)
+		})
+	}
 }

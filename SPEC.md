@@ -23,14 +23,14 @@ Notation:
 ## Quick reference (default behavior)
 
 | Category         | Types                                               | Default width | Transform (ordering)                                                                | Encoding |
-|------------------|------------------------------------------------------|---------------|--------------------------------------------------------------------------------------|----------|
+|------------------|-----------------------------------------------------|---------------|-------------------------------------------------------------------------------------|----------|
 | String           | string                                              | n bytes       | none                                                                                | raw bytes |
 | Bytes            | []byte                                              | n bytes       | none                                                                                | raw bytes |
 | UUID             | RFC4122 UUID                                        | 16 bytes      | none                                                                                | raw bytes |
 | Boolean          | bool                                                | 1 byte        | false → 0x00; true → 0x01                                                           | single byte |
-| Signed integers  | int, int8, int16, int32, int64, time.Duration       | 8 bytes       | widen to int64; XOR sign bit (u = uint64(v) XOR 0x8000000000000000)                | big-endian |
+| Signed integers  | int, int8, int16, int32, int64, time.Duration       | 8 bytes       | widen to int64; XOR sign bit (u = uint64(v) XOR 0x8000000000000000)                 | big-endian |
 | Unsigned integers| uint8, uint16, uint32, uint64                       | 8 bytes       | widen to uint64; no transform                                                       | big-endian |
-| Floating-point   | float32, float64                                     | 8 bytes       | widen to float64; NaN → canonical; v<0: NOT bits; v≥0: flip sign bit                | big-endian IEEE754 |
+| Floating-point   | float32, float64                                    | 8 bytes       | widen to float64; NaN → canonical; v<0: NOT bits; v≥0: flip sign bit                | big-endian IEEE754 |
 | Time instant     | time.Time (UTC)                                     | 8 bytes       | UnixNano as int64; XOR sign bit                                                     | big-endian |
 | Nil              | nil                                                 | 1 byte        | 0x00                                                                                | single byte |
 | End sentinel     | struct{}                                            | 1 byte        | 0xFF                                                                                | single byte |

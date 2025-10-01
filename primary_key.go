@@ -6,7 +6,7 @@ import (
 )
 
 // NewPrimaryKey creates a new PrimaryKey from partition and row keys.
-// Returns an error if either key is nil.
+// Panics if either key is nil.
 func NewPrimaryKey(partitionKey, rowKey LexKey) PrimaryKey {
 	if partitionKey == nil || rowKey == nil {
 		panic("partitionKey and rowKey cannot be nil")
