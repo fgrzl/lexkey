@@ -2,20 +2,20 @@ name: Pre-Release
 
 on:
   workflow_dispatch:
-  
+
 permissions:
   contents: write
   packages: read
 
 jobs:
-  TagAndPublish:
+  release:
     name: Tag and Notify Go Proxy
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
     steps:
       - name: Checkout Full History
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -27,14 +27,14 @@ jobs:
         uses: gittools/actions/gitversion/execute@v4.0.1
 
       - name: Tag Commit
-        uses: fgrzl/actions/tag-commit@v0.0.3
+        uses: fgrzl/actions/tag-commit@v0.0.5
         with:
           tag: ${{ steps.version.outputs.semVer }}
 
       - name: Notify Go Proxy
-        uses: fgrzl/actions/notify-go-proxy@v0.0.3
+        uses: fgrzl/actions/notify-go-proxy@v0.0.5
         with:
           tag: ${{ steps.version.outputs.semVer }}
 
       - name: Prune Pre-release Tags
-        uses: fgrzl/actions/prune-tags@v0.0.3
+        uses: fgrzl/actions/prune-tags@v0.0.5
