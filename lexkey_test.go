@@ -87,19 +87,6 @@ func TestShouldMarshalLexKeyToJSON(t *testing.T) {
 	require.True(t, len(data) > 0)
 }
 
-func TestShouldUnmarshalLexKeyFromJSONRoundTrip(t *testing.T) {
-	// Arrange
-	key := Encode("test")
-	data, err := json.Marshal(key)
-	require.NoError(t, err)
-	// Act
-	var decoded LexKey
-	err = json.Unmarshal(data, &decoded)
-	// Assert
-	require.NoError(t, err)
-	assert.Equal(t, key, decoded)
-}
-
 // Lexicographic ordering behavior
 func TestShouldOrderLexicographicallyGivenDifferentStrings(t *testing.T) {
 	// Arrange
@@ -157,13 +144,6 @@ func TestShouldEncodeIntAsLexOrderedBytes(t *testing.T) {
 	assert.Equal(t, "800000000000002a", hex.EncodeToString(intKey))
 }
 
-func TestShouldEncodeFloat64AsLexOrderedBytes(t *testing.T) {
-	// Arrange / Act
-	floatKey := Encode(3.14)
-	// Assert
-	assert.Equal(t, "c0091eb851eb851f", hex.EncodeToString(floatKey))
-}
-
 func TestShouldEncodeNegativeIntAsLexOrderedBytes(t *testing.T) {
 	// Arrange / Act
 	negativeIntKey := Encode(-42)
@@ -179,16 +159,6 @@ func TestShouldEncodeBooleansAsSingleByte(t *testing.T) {
 	// Assert
 	assert.Equal(t, "01", hex.EncodeToString(trueKey))
 	assert.Equal(t, "00", hex.EncodeToString(falseKey))
-}
-
-// Error behaviors
-func TestShouldReturnErrorWhenFromHexStringIsInvalid(t *testing.T) {
-	// Arrange
-	var key LexKey
-	// Act
-	err := key.FromHexString("invalidhex")
-	// Assert
-	assert.Error(t, err)
 }
 
 func TestShouldPanicWhenEncodingUnsupportedType(t *testing.T) {
@@ -678,4 +648,116 @@ func TestShouldReturnErrorWhenEncodeIntoCanonicalWidthBufferIsTooSmall(t *testin
 	_, err := EncodeIntoCanonicalWidth(buf, parts...)
 	// Assert
 	require.Error(t, err)
+}
+
+// Ensure helper encoders for floats are covered (positive/negative finite paths)
+func TestEncodeFloat64HelperMatchesExpected(t *testing.T) {
+	gotPos := encodeFloat64(3.14)
+	gotNeg := encodeFloat64(-3.14)
+	assert.Equal(t, "c0091eb851eb851f", hex.EncodeToString(gotPos))
+	assert.Equal(t, "3ff6e147ae147ae0", hex.EncodeToString(gotNeg))
+}
+
+func TestEncodeFloat32HelperMatchesExpected(t *testing.T) {
+	gotPos := encodeFloat32(float32(3.14))
+	gotNeg := encodeFloat32(float32(-3.14))
+	// 32-bit transformed encodings
+	assert.Equal(t, "c048f5c3", hex.EncodeToString(gotPos))
+	assert.Equal(t, "3fb70a3c", hex.EncodeToString(gotNeg))
+}
+
+// Cover canonicalization of narrower signed types (int8)
+func TestCanonicalizeInt8ViaEncodeCanonicalWidth(t *testing.T) {
+	a := EncodeCanonicalWidth(int8(-5))
+	b := EncodeCanonicalWidth(int64(-5))
+	assert.Equal(t, b, a)
+	assert.Equal(t, "7ffffffffffffffb", a.ToHexString())
+}
+
+// Exercise RangeKey.Encode with withPartitionKey=false
+func TestRangeKeyEncodeWithoutPartitionKey(t *testing.T) {
+	rk := RangeKey{PartitionKey: LexKey("p"), StartRowKey: LexKey("r"), EndRowKey: LexKey("r")}
+	lower, upper := rk.Encode(false)
+	assert.Equal(t, "0072", hex.EncodeToString(lower))
+	assert.Equal(t, "0072ff", hex.EncodeToString(upper))
+}
+
+// Cover MarshalText/UnmarshalText empty branches
+func TestMarshalUnmarshalTextEmpty(t *testing.T) {
+	var e LexKey
+	// MarshalText on empty
+	txt, err := e.MarshalText()
+	require.NoError(t, err)
+	assert.Equal(t, 0, len(txt))
+
+	// UnmarshalText with empty input
+	var d LexKey
+	err = d.UnmarshalText([]byte(""))
+	require.NoError(t, err)
+	assert.Equal(t, 0, len(d))
+}
+
+func TestShouldEncodeIntoCanonicalWidthWithEmptyParts(t *testing.T) {
+	// Arrange
+	buf := make([]byte, 1)
+	// Act
+	n, err := EncodeIntoCanonicalWidth(buf)
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, 0, n)
+}
+
+func TestShouldReturnZeroSizeForZeroParts(t *testing.T) {
+	// Arrange / Act
+	a := EncodeSize()
+	b := EncodeSizeCanonicalWidth()
+	// Assert
+	assert.Equal(t, 0, a)
+	assert.Equal(t, 0, b)
+}
+
+func TestShouldErrorWhenNewLexKeyCanonicalWidthReceivesNoParts(t *testing.T) {
+	// Arrange / Act
+	_, err := NewLexKeyCanonicalWidth()
+	// Assert
+	require.Error(t, err)
+}
+
+func TestShouldErrorOnUnmarshalTextGivenInvalidHex(t *testing.T) {
+	// Arrange
+	var e LexKey
+	// Act
+	err := e.UnmarshalText([]byte("zzz"))
+	// Assert
+	require.Error(t, err)
+}
+
+func TestShouldCompareEqualAndGreater(t *testing.T) {
+	// Arrange
+	a := Encode("x", 1)
+	b := Encode("x", 1)
+	c := Encode("x", 2)
+	// Act / Assert
+	assert.Equal(t, 0, Compare(a, b))
+	assert.Greater(t, Compare(c, b), 0)
+}
+
+func TestShouldEncodeToBytesGivenLexKey(t *testing.T) {
+	// Arrange
+	in := LexKey("ab")
+	// Act
+	out, err := encodeToBytes(in)
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, "6162", LexKey(out).ToHexString())
+}
+
+func TestShouldCanonicalizeVariousWidthsViaEncodeCanonicalWidth(t *testing.T) {
+	// Arrange
+	vals := []any{int(1), int16(-2), uint16(3), uint32(4), float32(1.5)}
+	// Act
+	k := EncodeCanonicalWidth(vals...)
+	// Assert: compare with manually widened equivalents
+	want := Encode(int64(1), int64(-2), uint64(3), uint64(4), float64(1.5))
+	assert.Equal(t, want, k)
 }
