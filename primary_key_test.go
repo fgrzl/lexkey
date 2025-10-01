@@ -1,9 +1,9 @@
 package lexkey
 
 import (
-	"encoding/hex"
 	"testing"
 
+	"github.com/fgrzl/lexkey/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -35,7 +35,7 @@ func TestShouldEncodePrimaryKeyAndDecodeRoundTrip(t *testing.T) {
 	enc := pk.Encode()
 
 	// Assert: expected encoding is partition + Seperator + row
-	assert.Equal(t, "706172746974696f6e00726f77", hex.EncodeToString(enc))
+	test.AssertHexEqual(t, "706172746974696f6e00726f77", enc)
 
 	// Act
 	decoded, err := DecodePrimaryKey(enc)
@@ -90,7 +90,7 @@ func TestShouldPanicWithExpectedMessageForNewPrimaryKey(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			// Act
-			msg, ok := capturePanicMessage(func() { NewPrimaryKey(c.part1, c.part2) })
+			msg, ok := test.CapturePanicMessage(func() { NewPrimaryKey(c.part1, c.part2) })
 
 			// Assert
 			require.True(t, ok)

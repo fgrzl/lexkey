@@ -466,15 +466,3 @@ func encodeFloat32(v float32) []byte {
 func Compare(a, b LexKey) int {
 	return bytes.Compare(a, b)
 }
-
-// helper captures panic message and whether a panic occurred
-func capturePanicMessage(f func()) (msg string, ok bool) {
-	defer func() {
-		if r := recover(); r != nil {
-			msg = fmt.Sprintf("%v", r)
-			ok = true
-		}
-	}()
-	f()
-	return "", false
-}

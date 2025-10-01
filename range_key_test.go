@@ -1,9 +1,9 @@
 package lexkey
 
 import (
-	"encoding/hex"
 	"testing"
 
+	"github.com/fgrzl/lexkey/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -45,8 +45,8 @@ func TestShouldEncodeRangeKeyWithPartitionKey(t *testing.T) {
 	lower, upper := rk.Encode(true)
 
 	// Assert
-	assert.Equal(t, "70617274007374617274", hex.EncodeToString(lower))
-	assert.Equal(t, "7061727400656e64ff", hex.EncodeToString(upper))
+	test.AssertHexEqual(t, "70617274007374617274", lower)
+	test.AssertHexEqual(t, "7061727400656e64ff", upper)
 }
 
 func TestShouldEncodeRangeKeyWithoutPartitionKey(t *testing.T) {
@@ -57,8 +57,8 @@ func TestShouldEncodeRangeKeyWithoutPartitionKey(t *testing.T) {
 	lower, upper := rk.Encode(false)
 
 	// Assert
-	assert.Equal(t, "0072", hex.EncodeToString(lower))
-	assert.Equal(t, "0072ff", hex.EncodeToString(upper))
+	test.AssertHexEqual(t, "0072", lower)
+	test.AssertHexEqual(t, "0072ff", upper)
 }
 
 func TestShouldEncodeEmptyRowKeyBoundariesCorrectly(t *testing.T) {
@@ -67,6 +67,6 @@ func TestShouldEncodeEmptyRowKeyBoundariesCorrectly(t *testing.T) {
 	upper := encodeBoundary(Encode("partition"), nil, true, true)
 
 	// Assert
-	assert.Equal(t, "706172746974696f6e00", hex.EncodeToString(lower))
-	assert.Equal(t, "706172746974696f6eff", hex.EncodeToString(upper))
+	test.AssertHexEqual(t, "706172746974696f6e00", lower)
+	test.AssertHexEqual(t, "706172746974696f6eff", upper)
 }
