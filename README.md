@@ -155,4 +155,4 @@ Numeric width canonicalization is now the default. This ensures logical numeric 
 
 See SPEC.md for the full encoding specification and test vectors.
 
-**Test Coverage:** ✅ **100%** 🎯
+**Test Coverage:** ✅ **99.6%** 🎯
