@@ -8,7 +8,7 @@ permissions:
   packages: read
 
 jobs:
-  TagAndPublish:
+  release:
     name: Tag and Notify Go Proxy
     runs-on: ubuntu-latest
     timeout-minutes: 5
