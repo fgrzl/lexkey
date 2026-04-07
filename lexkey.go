@@ -1,9 +1,9 @@
 package lexkey
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -31,25 +31,8 @@ type LexKey []byte
 // Returns an error if parts is empty or contains unsupported types.
 // The resulting key is a concatenation of encoded parts separated by Seperator bytes.
 func NewLexKey(parts ...any) (LexKey, error) {
-	if len(parts) == 0 {
-		return LexKey([]byte{}), errors.New("cannot create LexKey: no parts provided")
-	}
-
-	// Pre-allocate result slice based on estimated size
-	size := estimateSize(parts)
-	result := make([]byte, 0, size)
-
-	for i, part := range parts {
-		encoded, err := encodeToBytes(part)
-		if err != nil {
-			return LexKey([]byte{}), fmt.Errorf("cannot encode part %d (%T): %w", i, part, err)
-		}
-		result = append(result, encoded...)
-		if i < len(parts)-1 {
-			result = append(result, Seperator)
-		}
-	}
-	return result, nil
+	// Default behavior: canonicalize numeric widths before encoding (BREAKING CHANGE).
+	return NewLexKeyCanonicalWidth(parts...)
 }
 
 // Encode constructs a LexKey from pre-validated parts, panicking if encoding fails.
@@ -63,8 +46,118 @@ func Encode(parts ...any) LexKey {
 	return key
 }
 
+// canonicalizeNumericWidth converts narrower numeric types to 64-bit widths so
+// cross-width numeric values sort identically (e.g., uint32(1) vs uint64(1)).
+// It does NOT merge signed and unsigned domains, nor ints vs floats.
+// Mapping:
+// - int, int8, int16, int32 -> int64
+// - uint8, uint16, uint32 -> uint64
+// - float32 -> float64
+// Other types unchanged.
+func canonicalizeNumericWidth(v any) any {
+	switch x := v.(type) {
+	case int:
+		return int64(x)
+	case int8:
+		return int64(x)
+	case int16:
+		return int64(x)
+	case int32:
+		return int64(x)
+	case uint8:
+		return uint64(x)
+	case uint16:
+		return uint64(x)
+	case uint32:
+		return uint64(x)
+	case float32:
+		return float64(x)
+	default:
+		return v
+	}
+}
+
+// NewLexKeyCanonicalWidth constructs a LexKey after normalizing numeric widths
+// so cross-width numeric values sort logically. Backwards-compatible: bytes differ
+// from NewLexKey because widths are canonicalized; use only if you control both sides.
+func NewLexKeyCanonicalWidth(parts ...any) (LexKey, error) {
+	if len(parts) == 0 {
+		return LexKey([]byte{}), errors.New("cannot create LexKey: no parts provided")
+	}
+	canon := make([]any, len(parts))
+	for i, p := range parts {
+		canon[i] = canonicalizeNumericWidth(p)
+	}
+	size := estimateSize(canon)
+	result := make([]byte, size)
+	pos := 0
+	for i, part := range canon {
+		n, err := encodeInto(result[pos:], part)
+		if err != nil {
+			return LexKey([]byte{}), fmt.Errorf("cannot encode part %d (%T): %w", i, part, err)
+		}
+		pos += n
+		if i < len(canon)-1 {
+			result[pos] = Seperator
+			pos++
+		}
+	}
+	return result[:pos], nil
+}
+
+// EncodeCanonicalWidth panics on error; see NewLexKeyCanonicalWidth.
+func EncodeCanonicalWidth(parts ...any) LexKey {
+	key, err := NewLexKeyCanonicalWidth(parts...)
+	if err != nil {
+		panic(fmt.Sprintf("failed to encode canonical-width key: %v", err))
+	}
+	return key
+}
+
+// EncodeSizeCanonicalWidth returns the size after width canonicalization.
+func EncodeSizeCanonicalWidth(parts ...any) int {
+	if len(parts) == 0 {
+		return 0
+	}
+	canon := make([]any, len(parts))
+	for i, p := range parts {
+		canon[i] = canonicalizeNumericWidth(p)
+	}
+	return estimateSize(canon)
+}
+
+// EncodeIntoCanonicalWidth writes the canonical-width encoding into dst.
+func EncodeIntoCanonicalWidth(dst []byte, parts ...any) (int, error) {
+	if len(parts) == 0 {
+		return 0, nil
+	}
+	canon := make([]any, len(parts))
+	for i, p := range parts {
+		canon[i] = canonicalizeNumericWidth(p)
+	}
+	need := estimateSize(canon)
+	if len(dst) < need {
+		return 0, fmt.Errorf("EncodeInto: dst too small: need %d bytes, have %d", need, len(dst))
+	}
+	pos := 0
+	for i, part := range canon {
+		n, err := encodeInto(dst[pos:], part)
+		if err != nil {
+			return 0, fmt.Errorf("cannot encode part %d (%T): %w", i, part, err)
+		}
+		pos += n
+		if i < len(canon)-1 {
+			dst[pos] = Seperator
+			pos++
+		}
+	}
+	return pos, nil
+}
+
 // EncodeFirst returns the first lexicographically sortable key in a range.
 // Adds a Seperator byte to the prefix to ensure it sorts before any extension.
+//
+// Note: this calls Encode and will panic on encoding errors (i.e., when given unsupported types).
 func EncodeFirst(parts ...any) LexKey {
 	prefix := Encode(parts...)
 	return append(prefix, Seperator)
@@ -72,6 +165,8 @@ func EncodeFirst(parts ...any) LexKey {
 
 // EncodeLast returns the last lexicographically sortable key in a range.
 // Adds an EndMarker byte to the prefix to ensure it sorts after any extension.
+//
+// Note: this calls Encode and will panic on encoding errors (i.e., when given unsupported types).
 func EncodeLast(parts ...any) LexKey {
 	prefix := Encode(parts...)
 	return append(prefix, EndMarker)
@@ -89,6 +184,18 @@ func (e LexKey) ToHexString() string {
 		return ""
 	}
 	return hex.EncodeToString(e)
+}
+
+// EncodeSize returns the exact number of bytes required to encode the given parts,
+// including separators. Use this to pre-allocate a destination buffer for EncodeInto.
+func EncodeSize(parts ...any) int {
+	return EncodeSizeCanonicalWidth(parts...)
+}
+
+// EncodeInto writes the encoding of parts into dst and returns the number of bytes written.
+// The dst slice must have length >= EncodeSize(parts...). No allocations are performed.
+func EncodeInto(dst []byte, parts ...any) (int, error) {
+	return EncodeIntoCanonicalWidth(dst, parts...)
 }
 
 // FromHexString decodes a hexadecimal string back into a LexKey.
@@ -112,70 +219,168 @@ func (e *LexKey) FromHexString(hexStr string) error {
 
 // MarshalJSON encodes LexKey as a hex string for JSON serialization.
 func (e LexKey) MarshalJSON() ([]byte, error) {
-	return json.Marshal(e.ToHexString())
+	// Use MarshalText to get hex bytes, then wrap with quotes without extra escaping
+	text, err := e.MarshalText()
+	if err != nil {
+		return nil, err
+	}
+	// Build JSON string: "<hex>"
+	out := make([]byte, len(text)+2)
+	out[0] = '"'
+	copy(out[1:], text)
+	out[len(out)-1] = '"'
+	return out, nil
 }
 
 // UnmarshalJSON decodes a hex string from JSON into a LexKey.
 // Handles JSON null by setting to an empty slice.
 func (e *LexKey) UnmarshalJSON(data []byte) error {
+	// Handle null
 	if string(data) == "null" {
 		*e = []byte{}
 		return nil
 	}
-	var hexStr string
-	if err := json.Unmarshal(data, &hexStr); err != nil {
-		return fmt.Errorf("cannot unmarshal JSON into LexKey: %w", err)
+	// Expect a JSON string: "..."
+	if len(data) >= 2 && data[0] == '"' && data[len(data)-1] == '"' {
+		inner := data[1 : len(data)-1]
+		return e.UnmarshalText(inner)
 	}
-	return e.FromHexString(hexStr)
+	return fmt.Errorf("cannot unmarshal JSON into LexKey: invalid format")
+}
+
+// MarshalText implements encoding.TextMarshaler, returning a hex encoding of the key.
+func (e LexKey) MarshalText() ([]byte, error) {
+	if len(e) == 0 {
+		return []byte{}, nil
+	}
+	dst := make([]byte, hex.EncodedLen(len(e)))
+	hex.Encode(dst, e)
+	return dst, nil
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler, decoding a hex input into the key.
+func (e *LexKey) UnmarshalText(text []byte) error {
+	if len(text) == 0 {
+		*e = []byte{}
+		return nil
+	}
+	// hex.Decode expects even-length; it returns an error on malformed input
+	dst := make([]byte, hex.DecodedLen(len(text)))
+	n, err := hex.Decode(dst, text)
+	if err != nil {
+		return fmt.Errorf("cannot decode hex string: %w", err)
+	}
+	*e = dst[:n]
+	return nil
 }
 
 // encodeToBytes converts a value to a lexicographically sortable byte representation.
 // Returns an error if the type is unsupported.
 func encodeToBytes(v any) ([]byte, error) {
+	// Backwards-compatible wrapper: allocate a sufficiently large temp buffer and use encodeInto.
+	// Most types encode into at most 16 bytes (UUID) plus separators.
+	buf := make([]byte, 32)
+	// Apply canonical width so encodeToBytes matches default behavior
+	n, err := encodeInto(buf, canonicalizeNumericWidth(v))
+	if err != nil {
+		return nil, err
+	}
+	// return a copy of the used portion
+	out := make([]byte, n)
+	copy(out, buf[:n])
+	return out, nil
+}
+
+// encodeInto writes the lexicographic encoding of v into dst and returns the number of bytes written.
+// dst must be large enough to hold the encoding; caller is responsible for sizing it (estimateSize).
+func encodeInto(dst []byte, v any) (int, error) {
 	switch v := v.(type) {
 	case string:
-		return []byte(v), nil
+		n := copy(dst, v)
+		return n, nil
 	case uuid.UUID:
-		return v[:], nil
+		n := copy(dst, v[:])
+		return n, nil
 	case LexKey:
-		return v, nil
+		n := copy(dst, v)
+		return n, nil
 	case []byte:
-		return v, nil
+		n := copy(dst, v)
+		return n, nil
 	case int:
-		return encodeInt64(int64(v)), nil
+		// encode as int64
+		binary.BigEndian.PutUint64(dst, uint64(int64(v))^0x8000000000000000)
+		return 8, nil
 	case int64:
-		return encodeInt64(v), nil
+		binary.BigEndian.PutUint64(dst, uint64(v)^0x8000000000000000)
+		return 8, nil
 	case int32:
-		return encodeInt32(v), nil
+		binary.BigEndian.PutUint32(dst, uint32(v)^0x80000000)
+		return 4, nil
 	case int16:
-		return encodeInt16(v), nil
+		binary.BigEndian.PutUint16(dst, uint16(v)^0x8000)
+		return 2, nil
 	case uint64:
-		return encodeUint64(v), nil
+		binary.BigEndian.PutUint64(dst, v)
+		return 8, nil
 	case uint32:
-		return encodeUint32(v), nil
+		binary.BigEndian.PutUint32(dst, v)
+		return 4, nil
 	case uint16:
-		return encodeUint16(v), nil
+		binary.BigEndian.PutUint16(dst, v)
+		return 2, nil
 	case uint8:
-		return []byte{v}, nil
+		dst[0] = v
+		return 1, nil
 	case float64:
-		return encodeFloat64(v), nil
+		if math.IsNaN(v) {
+			binary.BigEndian.PutUint64(dst, 0x7FF8000000000001)
+			return 8, nil
+		}
+		bits := math.Float64bits(v)
+		if v < 0 {
+			bits = ^bits
+		} else {
+			bits ^= 1 << 63
+		}
+		binary.BigEndian.PutUint64(dst, bits)
+		return 8, nil
 	case float32:
-		return encodeFloat32(v), nil
+		if math.IsNaN(float64(v)) {
+			binary.BigEndian.PutUint32(dst, 0x7FC00001)
+			return 4, nil
+		}
+		bits := math.Float32bits(v)
+		if v < 0 {
+			bits = ^bits
+		} else {
+			bits ^= 1 << 31
+		}
+		binary.BigEndian.PutUint32(dst, bits)
+		return 4, nil
 	case bool:
 		if v {
-			return []byte{1}, nil
+			dst[0] = 1
+		} else {
+			dst[0] = 0
 		}
-		return []byte{0}, nil
+		return 1, nil
 	case time.Time:
-		return encodeInt64(v.UTC().UnixNano()), nil
+		// encode as int64 of UnixNano with sign flip
+		t := v.UTC().UnixNano()
+		binary.BigEndian.PutUint64(dst, uint64(t)^0x8000000000000000)
+		return 8, nil
 	case time.Duration:
-		return encodeInt64(int64(v)), nil
+		binary.BigEndian.PutUint64(dst, uint64(int64(v))^0x8000000000000000)
+		return 8, nil
 	case nil:
-		return []byte{Seperator}, nil
+		dst[0] = Seperator
+		return 1, nil
 	case struct{}:
-		return []byte{EndMarker}, nil
+		dst[0] = EndMarker
+		return 1, nil
 	default:
-		return nil, fmt.Errorf("unsupported type %T", v)
+		return 0, fmt.Errorf("unsupported type %T", v)
 	}
 }
 
@@ -219,49 +424,6 @@ func estimateSize(parts []any) int {
 	return size
 }
 
-// encodeInt64 encodes an int64 into 8 bytes, flipping the sign bit for lexicographic ordering.
-// Negative numbers sort before positive ones by XORing with 0x8000000000000000.
-func encodeInt64(v int64) []byte {
-	buf := make([]byte, 8)
-	binary.BigEndian.PutUint64(buf, uint64(v)^0x8000000000000000)
-	return buf
-}
-
-// encodeInt32 encodes an int32 into 4 bytes, flipping the sign bit for lexicographic ordering.
-func encodeInt32(v int32) []byte {
-	buf := make([]byte, 4)
-	binary.BigEndian.PutUint32(buf, uint32(v)^0x80000000)
-	return buf
-}
-
-// encodeInt16 encodes an int16 into 2 bytes, flipping the sign bit for lexicographic ordering.
-func encodeInt16(v int16) []byte {
-	buf := make([]byte, 2)
-	binary.BigEndian.PutUint16(buf, uint16(v)^0x8000)
-	return buf
-}
-
-// encodeUint64 encodes a uint64 into 8 bytes, preserving natural order.
-func encodeUint64(v uint64) []byte {
-	buf := make([]byte, 8)
-	binary.BigEndian.PutUint64(buf, v)
-	return buf
-}
-
-// encodeUint32 encodes a uint32 into 4 bytes, preserving natural order.
-func encodeUint32(v uint32) []byte {
-	buf := make([]byte, 4)
-	binary.BigEndian.PutUint32(buf, v)
-	return buf
-}
-
-// encodeUint16 encodes a uint16 into 2 bytes, preserving natural order.
-func encodeUint16(v uint16) []byte {
-	buf := make([]byte, 2)
-	binary.BigEndian.PutUint16(buf, v)
-	return buf
-}
-
 // encodeFloat64 encodes a float64 into 8 bytes, ensuring lexicographic ordering.
 // Flips the sign bit for positive numbers and all bits for negative numbers.
 // NaN is encoded as a canonical value (0x7FF8000000000001).
@@ -298,4 +460,9 @@ func encodeFloat32(v float32) []byte {
 	}
 	binary.BigEndian.PutUint32(buf, bits)
 	return buf
+}
+
+// Compare returns -1, 0, 1 for a < b, a == b, a > b respectively without allocations.
+func Compare(a, b LexKey) int {
+	return bytes.Compare(a, b)
 }

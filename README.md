@@ -3,8 +3,8 @@
 
 # lexkey
 
-**`lexkey`** is a lightweight **lexicographically sortable key encoding library** for Go.  
-It provides **consistent, ordered, and efficient** encoding for various data types, ensuring they sort **correctly** when stored in databases, key-value stores, or other ordered storage systems.
+`lexkey` is a lightweight lexicographically sortable key encoding library for Go.
+It provides consistent, ordered, and efficient encoding for common data types so they sort correctly in byte-wise order.
 
 ## ✨ **Features**
 
@@ -20,32 +20,20 @@ It provides **consistent, ordered, and efficient** encoding for various data typ
 go get github.com/fgrzl/lexkey
 ```
 
-## 🛠 **Usage**
+## 🛠 Usage
 
 ### **Create a LexKey**
 
 ```go
-package main
-
-import (
-	"fmt"
-	"github.com/fgrzl/lexkey"
-)
-
-func main() {
-	key, err := lexkey.Encode("user", 123, true)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println("Encoded Key (Hex):", key.ToHexString())
-}
+key := lexkey.Encode("user", 123, true)
+fmt.Println("Encoded Key (Hex):", key.ToHexString())
 ```
 
 ### **Sorting Keys**
 
 ```go
-key1, _ := lexkey.Encode("apple")
-key2, _ := lexkey.Encode("banana")
+key1 := lexkey.Encode("apple")
+key2 := lexkey.Encode("banana")
 
 fmt.Println(string(key1) < string(key2)) // ✅ True (correct lexicographic order)
 ```
@@ -53,8 +41,8 @@ fmt.Println(string(key1) < string(key2)) // ✅ True (correct lexicographic orde
 ### **Handling Numbers**
 
 ```go
-key1, _ := lexkey.Encode(int64(-100))
-key2, _ := lexkey.Encode(int64(50))
+key1 := lexkey.Encode(int64(-100))
+key2 := lexkey.Encode(int64(50))
 
 fmt.Println(string(key1) < string(key2)) // ✅ True (correct sorting for signed integers)
 ```
@@ -65,7 +53,7 @@ fmt.Println(string(key1) < string(key2)) // ✅ True (correct sorting for signed
 import "github.com/google/uuid"
 
 id := uuid.New()
-key, _ := lexkey.Encode("order", id)
+key := lexkey.Encode("order", id)
 
 fmt.Println("Encoded UUID Key:", key.ToHexString())
 ```
@@ -75,7 +63,7 @@ fmt.Println("Encoded UUID Key:", key.ToHexString())
 ```go
 import "encoding/json"
 
-key, _ := lexkey.Encode("session", 42)
+key := lexkey.Encode("session", 42)
 jsonData, _ := json.Marshal(key)
 fmt.Println(string(jsonData)) // ✅ Encoded as a hex string
 ```
@@ -85,11 +73,11 @@ fmt.Println(string(jsonData)) // ✅ Encoded as a hex string
 | Type            | Supported? | Encoding Details                                |
 | --------------- | ---------- | ----------------------------------------------- |
 | `string`        | ✅ Yes     | Stored as raw UTF-8 bytes                       |
-| `int32`         | ✅ Yes     | Converted to `int64` for uniform sorting        |
+| `int32`         | ✅ Yes     | Canonicalized to `int64` for uniform sorting    |
 | `int64`         | ✅ Yes     | Sign-bit flipped for correct ordering           |
 | `uint32`        | ✅ Yes     | Big-endian encoded                              |
 | `uint64`        | ✅ Yes     | Big-endian encoded                              |
-| `float32`       | ✅ Yes     | IEEE 754 encoded with sign-bit transformation   |
+| `float32`       | ✅ Yes     | Canonicalized to `float64` then transformed     |
 | `float64`       | ✅ Yes     | IEEE 754 encoded with sign-bit transformation   |
 | `bool`          | ✅ Yes     | `true → 0x01`, `false → 0x00`                   |
 | `uuid.UUID`     | ✅ Yes     | 16-byte raw representation                      |
@@ -99,42 +87,61 @@ fmt.Println(string(jsonData)) // ✅ Encoded as a hex string
 
 ## 📌 **Key Functions**
 
-### **Encoding Keys**
+### Encoding Keys
 
 ```go
-func Encode(parts ...any) (LexKey, error)
+func Encode(parts ...any) LexKey
+func NewLexKey(parts ...any) (LexKey, error)
+func EncodeInto(dst []byte, parts ...any) (int, error)
+func EncodeSize(parts ...any) int
 ```
 
-Encodes multiple values into a **single lexicographically sortable** key.
+Notes:
+- As of 2025-10-01, numeric width canonicalization is the default (breaking change):
+	- int, int8, int16, int32 → int64
+	- uint8, uint16, uint32 → uint64
+	- float32 → float64
+- For explicit use, the following helpers are provided (equivalent to default behavior):
+	- EncodeCanonicalWidth / NewLexKeyCanonicalWidth / EncodeIntoCanonicalWidth / EncodeSizeCanonicalWidth
 
-### **Sorting Helpers**
+### Sorting Helpers
 
 ```go
-func (e LexKey) EncodeFirst() []byte // Appends a NULL byte for range queries
-func (e LexKey) EncodeLast() []byte  // Appends a MAX byte for range queries
+func EncodeFirst(parts ...any) LexKey // lower bound: prefix + 0x00 (sorts before any extension of the prefix)
+func EncodeLast(parts ...any) LexKey  // upper bound: prefix + 0xFF (sorts after any extension of the prefix)
+func Compare(a, b LexKey) int         // -1/0/1 without allocations
 ```
 
-### **Hex Encoding**
+Prefix scans:
+
+```go
+// To scan all keys with a given prefix, use a half-open range [lower, upper):
+lower := lexkey.EncodeFirst("tenant", "users") // ... 00
+upper := lexkey.EncodeLast("tenant", "users")  // ... ff
+// All keys that start with ("tenant", "users", ...) will satisfy: lower <= key && key < upper
+```
+
+### Hex Encoding
 
 ```go
 func (e LexKey) ToHexString() string
 func (e *LexKey) FromHexString(hexStr string) error
 ```
 
-### **JSON Serialization**
+### JSON Serialization
 
 ```go
 func (e LexKey) MarshalJSON() ([]byte, error)
 func (e *LexKey) UnmarshalJSON(data []byte) error
 ```
 
-## 🏆 **Why Use `lexkey`?**
+## 🏆 Why Use `lexkey`?
 
 ✅ **Fast & Efficient** → Uses compact, binary-safe encoding.  
 ✅ **Correct Ordering** → Works across all supported types.  
 ✅ **Minimal Dependencies** → Only `uuid` and standard Go packages.
 
-## 🛠 **Testing**
+## 🛠 Testing
 
 Run the full test suite:
 
@@ -142,4 +149,10 @@ Run the full test suite:
 go test -cover ./...
 ```
 
-**Test Coverage:** ✅ **100%** 🎯
+## 🔄 Breaking change (2025-10-01)
+
+Numeric width canonicalization is now the default. This ensures logical numeric ordering across widths (e.g., uint32(1) and uint64(1) are equal on the wire). If you require the previous native-width bytes, pin an older release or re-encode using legacy rules as described in SPEC.md.
+
+See SPEC.md for the full encoding specification and test vectors.
+
+**Test Coverage:** ✅ **99.6%** 🎯
