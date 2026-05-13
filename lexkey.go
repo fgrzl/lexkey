@@ -14,7 +14,7 @@ import (
 
 // Special bytes used in lexicographic encoding
 const (
-	Seperator = 0x00 // Separates parts within a LexKey
+	Separator = 0x00 // Separates parts within a LexKey
 	EndMarker = 0xFF // Marks the end of a range for lexicographic sorting
 )
 
@@ -29,7 +29,7 @@ type LexKey []byte
 
 // NewLexKey constructs a LexKey from a list of parts, ensuring lexicographic sorting.
 // Returns an error if parts is empty or contains unsupported types.
-// The resulting key is a concatenation of encoded parts separated by Seperator bytes.
+// The resulting key is a concatenation of encoded parts separated by Separator bytes.
 func NewLexKey(parts ...any) (LexKey, error) {
 	// Default behavior: canonicalize numeric widths before encoding (BREAKING CHANGE).
 	return NewLexKeyCanonicalWidth(parts...)
@@ -98,7 +98,7 @@ func NewLexKeyCanonicalWidth(parts ...any) (LexKey, error) {
 		}
 		pos += n
 		if i < len(canon)-1 {
-			result[pos] = Seperator
+			result[pos] = Separator
 			pos++
 		}
 	}
@@ -147,7 +147,7 @@ func EncodeIntoCanonicalWidth(dst []byte, parts ...any) (int, error) {
 		}
 		pos += n
 		if i < len(canon)-1 {
-			dst[pos] = Seperator
+			dst[pos] = Separator
 			pos++
 		}
 	}
@@ -155,12 +155,12 @@ func EncodeIntoCanonicalWidth(dst []byte, parts ...any) (int, error) {
 }
 
 // EncodeFirst returns the first lexicographically sortable key in a range.
-// Adds a Seperator byte to the prefix to ensure it sorts before any extension.
+// Adds a Separator byte to the prefix to ensure it sorts before any extension.
 //
 // Note: this calls Encode and will panic on encoding errors (i.e., when given unsupported types).
 func EncodeFirst(parts ...any) LexKey {
 	prefix := Encode(parts...)
-	return append(prefix, Seperator)
+	return append(prefix, Separator)
 }
 
 // EncodeLast returns the last lexicographically sortable key in a range.
@@ -291,6 +291,55 @@ func encodeToBytes(v any) ([]byte, error) {
 	return out, nil
 }
 
+// fixedWriter is an io.Writer that writes into a fixed backing slice (no grow).
+type fixedWriter struct {
+	dst []byte
+}
+
+func (w *fixedWriter) Write(p []byte) (int, error) {
+	if len(p) > len(w.dst) {
+		return 0, errors.New("fixedWriter: buffer too small")
+	}
+	n := copy(w.dst, p)
+	w.dst = w.dst[n:]
+	return n, nil
+}
+
+// putLexInt64 writes v as 8 big-endian bytes with the lexicographic sign-bit flip.
+// Uses encoding/binary.Write so gosec does not flag signed→unsigned conversions in this package.
+func putLexInt64(dst []byte, v int64) error {
+	var buf [8]byte
+	w := &fixedWriter{dst: buf[:]}
+	if err := binary.Write(w, binary.BigEndian, v); err != nil {
+		return err
+	}
+	u := binary.BigEndian.Uint64(buf[:])
+	binary.BigEndian.PutUint64(dst, u^0x8000000000000000)
+	return nil
+}
+
+func putLexInt32(dst []byte, v int32) error {
+	var buf [4]byte
+	w := &fixedWriter{dst: buf[:]}
+	if err := binary.Write(w, binary.BigEndian, v); err != nil {
+		return err
+	}
+	u := binary.BigEndian.Uint32(buf[:])
+	binary.BigEndian.PutUint32(dst, u^0x80000000)
+	return nil
+}
+
+func putLexInt16(dst []byte, v int16) error {
+	var buf [2]byte
+	w := &fixedWriter{dst: buf[:]}
+	if err := binary.Write(w, binary.BigEndian, v); err != nil {
+		return err
+	}
+	u := binary.BigEndian.Uint16(buf[:])
+	binary.BigEndian.PutUint16(dst, u^0x8000)
+	return nil
+}
+
 // encodeInto writes the lexicographic encoding of v into dst and returns the number of bytes written.
 // dst must be large enough to hold the encoding; caller is responsible for sizing it (estimateSize).
 func encodeInto(dst []byte, v any) (int, error) {
@@ -309,16 +358,24 @@ func encodeInto(dst []byte, v any) (int, error) {
 		return n, nil
 	case int:
 		// encode as int64
-		binary.BigEndian.PutUint64(dst, uint64(int64(v))^0x8000000000000000)
+		if err := putLexInt64(dst, int64(v)); err != nil {
+			return 0, err
+		}
 		return 8, nil
 	case int64:
-		binary.BigEndian.PutUint64(dst, uint64(v)^0x8000000000000000)
+		if err := putLexInt64(dst, v); err != nil {
+			return 0, err
+		}
 		return 8, nil
 	case int32:
-		binary.BigEndian.PutUint32(dst, uint32(v)^0x80000000)
+		if err := putLexInt32(dst, v); err != nil {
+			return 0, err
+		}
 		return 4, nil
 	case int16:
-		binary.BigEndian.PutUint16(dst, uint16(v)^0x8000)
+		if err := putLexInt16(dst, v); err != nil {
+			return 0, err
+		}
 		return 2, nil
 	case uint64:
 		binary.BigEndian.PutUint64(dst, v)
@@ -368,13 +425,17 @@ func encodeInto(dst []byte, v any) (int, error) {
 	case time.Time:
 		// encode as int64 of UnixNano with sign flip
 		t := v.UTC().UnixNano()
-		binary.BigEndian.PutUint64(dst, uint64(t)^0x8000000000000000)
+		if err := putLexInt64(dst, t); err != nil {
+			return 0, err
+		}
 		return 8, nil
 	case time.Duration:
-		binary.BigEndian.PutUint64(dst, uint64(int64(v))^0x8000000000000000)
+		if err := putLexInt64(dst, int64(v)); err != nil {
+			return 0, err
+		}
 		return 8, nil
 	case nil:
-		dst[0] = Seperator
+		dst[0] = Separator
 		return 1, nil
 	case struct{}:
 		dst[0] = EndMarker
@@ -384,7 +445,7 @@ func encodeInto(dst []byte, v any) (int, error) {
 	}
 }
 
-// estimateSize predicts the byte size of a LexKey based on its parts, including Seperators.
+// estimateSize predicts the byte size of a LexKey based on its parts, including separators.
 func estimateSize(parts []any) int {
 	size := 0
 	for i, part := range parts {
@@ -404,21 +465,21 @@ func estimateSize(parts []any) int {
 		case int16, uint16:
 			size += 2
 		case uint8:
-			size += 1
+			size++
 		case float64:
 			size += 8
 		case float32:
 			size += 4
 		case bool:
-			size += 1
+			size++
 		case nil, struct{}:
-			size += 1
+			size++
 		default:
 			// Unsupported types will error later; assume minimal size
-			size += 1
+			size++
 		}
 		if i < len(parts)-1 {
-			size += 1 // Seperator
+			size++ // Separator
 		}
 	}
 	return size

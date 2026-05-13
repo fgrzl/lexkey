@@ -23,11 +23,11 @@ type PrimaryKey struct {
 	RowKey       LexKey
 }
 
-// Encode concatenates PartitionKey and RowKey with a Seperator.
+// Encode concatenates PartitionKey and RowKey with a Separator.
 func (pk PrimaryKey) Encode() LexKey {
 	result := make(LexKey, len(pk.PartitionKey)+len(pk.RowKey)+1)
 	n := copy(result, pk.PartitionKey)
-	result[n] = Seperator
+	result[n] = Separator
 	copy(result[n+1:], pk.RowKey)
 	return result
 }
@@ -35,7 +35,7 @@ func (pk PrimaryKey) Encode() LexKey {
 // DecodePrimaryKey decodes a PrimaryKey from its byte encoding.
 // Returns an error if the separator is missing or input is invalid.
 func DecodePrimaryKey(raw []byte) (PrimaryKey, error) {
-	sep := bytes.IndexByte(raw, Seperator)
+	sep := bytes.IndexByte(raw, Separator)
 	if sep < 0 {
 		return PrimaryKey{}, errors.New("DecodePrimaryKey: missing separator")
 	}

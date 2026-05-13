@@ -53,12 +53,13 @@ func encodeBoundary(partitionKey, rowKey LexKey, isUpper, withPartitionKey bool)
 		size = len(partitionKey)
 	}
 	if len(rowKey) > 0 {
-		size += 1 + len(rowKey) // Seperator + rowKey
+		size += len(rowKey)
+		size++ // Separator + rowKey
 		if isUpper {
 			size++ // extra byte for end marker
 		}
 	} else {
-		size += 1 // Just Seperator or end marker
+		size++ // Separator or end marker
 	}
 	result := make(LexKey, size)
 
@@ -67,9 +68,9 @@ func encodeBoundary(partitionKey, rowKey LexKey, isUpper, withPartitionKey bool)
 		n += copy(result, partitionKey)
 	}
 	if len(rowKey) == 0 {
-		result[n] = ternary(isUpper, EndMarker, Seperator)
+		result[n] = ternary(isUpper, EndMarker, Separator)
 	} else {
-		result[n] = Seperator
+		result[n] = Separator
 		n++
 		copy(result[n:], rowKey)
 		if isUpper {

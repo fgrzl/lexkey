@@ -34,7 +34,7 @@ func TestShouldEncodePrimaryKeyAndDecodeRoundTrip(t *testing.T) {
 	// Act
 	enc := pk.Encode()
 
-	// Assert: expected encoding is partition + Seperator + row
+	// Assert: expected encoding is partition + Separator + row
 	test.AssertHexEqual(t, "706172746974696f6e00726f77", enc)
 
 	// Act

@@ -51,7 +51,7 @@ func BenchmarkEncodeIntoPrealloc(b *testing.B) {
 			n, _ := encodeInto(buf[pos:], p)
 			pos += n
 			if j < len(parts)-1 {
-				buf[pos] = Seperator
+				buf[pos] = Separator
 				pos++
 			}
 		}
@@ -73,7 +73,7 @@ func BenchmarkEncodeIntoReuse(b *testing.B) {
 			n, _ := encodeInto(buf[pos:], p)
 			pos += n
 			if j < len(parts)-1 {
-				buf[pos] = Seperator
+				buf[pos] = Separator
 				pos++
 			}
 		}
@@ -96,7 +96,7 @@ func BenchmarkEncodeParallel(b *testing.B) {
 				n, _ := encodeInto(localBuf[pos:], p)
 				pos += n
 				if j < len(parts)-1 {
-					localBuf[pos] = Seperator
+					localBuf[pos] = Separator
 					pos++
 				}
 			}
