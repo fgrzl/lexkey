@@ -39,7 +39,7 @@ Notation:
 Legacy note: In legacy mode, native widths are used (e.g., int16→2 bytes, int32→4, uint8→1, uint16→2, uint32→4, float32→4) with the same transforms per type. See the “Legacy native-width mode” and examples below.
 
 ## Special bytes
-- Separator (also spelled Seperator in some code): 0x00 – inserted between parts in a composite key; also the encoding for nil and for boolean false.
+- Separator: 0x00 – inserted between parts in a composite key; also the encoding for nil and for boolean false.
 - EndMarker: 0xFF – used by range upper bounds and by EncodeLast; also the encoding for the Go sentinel type struct{}.
 
 These sentinel bytes are part of the on-the-wire format. Keep in mind that 0x00 may also appear as data (e.g., in strings/byte arrays, unsigned/signed integers with leading zero, false boolean, or nil). The LexKey design does not escape 0x00; decoding of composite parts is not generally supported (only specific helpers like PrimaryKey decode by splitting on the first 0x00).

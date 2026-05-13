@@ -457,7 +457,7 @@ func TestShouldEncodeNilAndStructMarkersWithEncodeInto(t *testing.T) {
 	n, err := encodeInto(dst, nil)
 	require.NoError(t, err)
 	assert.Equal(t, 1, n)
-	assert.Equal(t, byte(Seperator), dst[0])
+	assert.Equal(t, byte(Separator), dst[0])
 	// Act / Assert: struct{} -> EndMarker
 	n, err = encodeInto(dst, struct{}{})
 	require.NoError(t, err)
@@ -570,12 +570,12 @@ func TestShouldEstimateSizeAcrossAllCases(t *testing.T) {
 
 // Ensures monotonic ordering across a large int64 span using a reasonable stride
 func TestShouldMaintainOrderingAcrossLargeInt64Range(t *testing.T) {
-	const min = int64(-10_000_000)
-	const max = int64(10_000_000)
+	const lo = int64(-10_000_000)
+	const hi = int64(10_000_000)
 	const step = int64(10_000) // 2001 values; keeps test fast
 
-	prev := Encode(min)
-	for v := min + step; v <= max; v += step {
+	prev := Encode(lo)
+	for v := lo + step; v <= hi; v += step {
 		cur := Encode(v)
 		require.Less(t, Compare(prev, cur), 0, "ordering violated at %d: prev=%x cur=%x", v, prev, cur)
 		prev = cur
