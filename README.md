@@ -20,6 +20,10 @@ It provides consistent, ordered, and efficient encoding for common data types so
 go get github.com/fgrzl/lexkey
 ```
 
+## Documentation
+
+Guides: **[docs/](docs/README.md)** — [overview](docs/overview.md), [getting started](docs/getting-started.md). Wire format: [SPEC.md](SPEC.md).
+
 ## 🛠 Usage
 
 ### **Create a LexKey**
